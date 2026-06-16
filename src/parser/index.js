@@ -1,6 +1,6 @@
 'use strict';
 
-const { segment } = require('./segmenter');
+const { segment } = require('./ai-segmenter');
 const { matchProduct, matchPickup, matchZone, getSurgeTwins, canonicalSize } = require('./matcher');
 const { reconcile } = require('./reconciler');
 
@@ -83,8 +83,8 @@ function resolveItem(itemLine) {
   };
 }
 
-function parse(rawMessage) {
-  const seg = segment(rawMessage);
+async function parse(rawMessage) {
+  const seg = await segment(rawMessage);
 
   // Resolve fulfillment
   let fulfillment = {

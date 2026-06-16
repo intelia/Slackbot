@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@slack/bolt": "^3.21.1",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "openai": "^6.42.0"
   }
 }

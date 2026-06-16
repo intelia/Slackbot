@@ -92,7 +92,7 @@ async function handleParseOrderSubmit({ ack, body, view, client }) {
 
   if (!rawText || !channelId) return;
 
-  const order = parse(rawText);
+  const order = await parse(rawText);
   const blocks = buildReviewOrderBlocks(order);
 
   const result = await client.chat.postMessage({
