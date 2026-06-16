@@ -45,6 +45,20 @@ function getProductIndex() { return _productIndex; }
 
 // ── Product scoring ───────────────────────────────────────────────────────────
 
+// Order-preserving prefix match: each query token must be a prefix of the next
+// unmatched product token in sequence. Enables abbreviation-style search:
+// "ha ca ha coc" → "Half Carrot x Half Cocobanana" (stop-word "x" already removed)
+function sequentialPrefixScore(queryTokens, productTokens) {
+  if (queryTokens.length === 0 || productTokens.length === 0) return 0;
+  let qi = 0;
+  for (let pi = 0; pi < productTokens.length && qi < queryTokens.length; pi++) {
+    if (productTokens[pi].startsWith(queryTokens[qi])) qi++;
+  }
+  if (qi === 0) return 0;
+  const ratio = qi / queryTokens.length;
+  return ratio === 1 ? 0.95 : ratio * 0.7;
+}
+
 function scoreProductMatch(phraseNorm, phraseTokens, product) {
   const prodNorm     = product.normalized;
   const prodTokens   = product.tokens;
@@ -75,7 +89,12 @@ function scoreProductMatch(phraseNorm, phraseTokens, product) {
   }
   const reverseScore = prodTokensNB.length > 0 ? reverseMatch / prodTokensNB.length : 0;
 
-  return Math.min(1, forwardScore * 0.7 + reverseScore * 0.3);
+  const tokenScore = Math.min(1, forwardScore * 0.7 + reverseScore * 0.3);
+  const seqScore   = Math.max(
+    sequentialPrefixScore(phraseTokens, prodTokens),
+    sequentialPrefixScore(phraseTokens, prodTokensNB),
+  );
+  return Math.max(tokenScore, seqScore);
 }
 
 // ── Size helpers ──────────────────────────────────────────────────────────────
@@ -106,7 +125,7 @@ function findSize(product, sizeName) {
 
 // ── Product match ─────────────────────────────────────────────────────────────
 
-function matchProduct(productPhrase, sizeToken, statedPrice, qty) {
+function matchProduct(productPhrase, sizeToken, statedPrice, qty, limit = 6) {
   const phraseNorm  = normalize(productPhrase);
   const phraseTokens = tokenize(phraseNorm);
   const canonSize   = canonicalSize(sizeToken);
@@ -156,7 +175,7 @@ function matchProduct(productPhrase, sizeToken, statedPrice, qty) {
     return 0;
   });
 
-  return candidates.slice(0, 6);
+  return candidates.slice(0, limit);
 }
 
 // ── Zone matching ─────────────────────────────────────────────────────────────

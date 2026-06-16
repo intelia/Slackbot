@@ -344,80 +344,26 @@ function buildZonePickerModal(currentAddress, privateMetadata) {
   };
 }
 
-// ── Product search modal ──────────────────────────────────────────────────────
+// ── Product search modal (searchable external_select) ─────────────────────────
 
-function buildProductSearchModal(itemIndex, currentPhrase, privateMetadata) {
+function buildProductSearchModal(itemIndex, privateMetadata) {
   return {
     type: 'modal',
     callback_id: 'product_search_submit',
     private_metadata: JSON.stringify({ ...JSON.parse(privateMetadata || '{}'), itemIndex }),
     title: { type: 'plain_text', text: 'Search Products' },
-    submit: { type: 'plain_text', text: 'Find' },
-    close: { type: 'plain_text', text: 'Cancel' },
-    blocks: [
-      {
-        type: 'input',
-        block_id: 'search_query',
-        label: { type: 'plain_text', text: 'Product name' },
-        element: {
-          type: 'plain_text_input',
-          action_id: 'query_input',
-          initial_value: currentPhrase || '',
-          placeholder: { type: 'plain_text', text: 'e.g. Banana bread, Chicken Pie, Nutella…' },
-        },
-      },
-      {
-        type: 'input',
-        block_id: 'size_input',
-        label: { type: 'plain_text', text: 'Size (optional)' },
-        optional: true,
-        element: {
-          type: 'plain_text_input',
-          action_id: 'size_value',
-          placeholder: { type: 'plain_text', text: 'e.g. Mini, Regular, 8"…' },
-        },
-      },
-    ],
-  };
-}
-
-// ── Search results modal (after search submitted) ─────────────────────────────
-
-function buildSearchResultsModal(results, itemIndex, privateMetadata) {
-  if (results.length === 0) {
-    return {
-      type: 'modal',
-      callback_id: 'search_result_noop',
-      title: { type: 'plain_text', text: 'No Results' },
-      close: { type: 'plain_text', text: 'Back' },
-      blocks: [
-        { type: 'section', text: { type: 'mrkdwn', text: 'No products matched your search. Try a different name.' } },
-      ],
-    };
-  }
-
-  const options = results.slice(0, 25).map(c => ({
-    text: { type: 'plain_text', text: trunc(`${c.productName} · ${c.sizeName} — ${fmt(c.price)}`, 75) },
-    value: c.sizeId,
-  }));
-
-  return {
-    type: 'modal',
-    callback_id: 'search_result_submit',
-    private_metadata: JSON.stringify({ ...JSON.parse(privateMetadata || '{}'), itemIndex }),
-    title: { type: 'plain_text', text: 'Select Product' },
     submit: { type: 'plain_text', text: 'Apply' },
     close: { type: 'plain_text', text: 'Cancel' },
     blocks: [
       {
         type: 'input',
-        block_id: 'result_select',
-        label: { type: 'plain_text', text: `${results.length > 25 ? 'Top 25 of ' + results.length : results.length} results — select the correct one:` },
+        block_id: 'product_select',
+        label: { type: 'plain_text', text: 'Product & size' },
         element: {
-          type: 'static_select',
-          action_id: 'result_choice',
-          placeholder: { type: 'plain_text', text: 'Choose…' },
-          options,
+          type: 'external_select',
+          action_id: 'product_search_select',
+          placeholder: { type: 'plain_text', text: 'Type to search… e.g. "ha ca coc", "banana 6"' },
+          min_query_length: 0,
         },
       },
     ],
@@ -425,8 +371,9 @@ function buildSearchResultsModal(results, itemIndex, privateMetadata) {
 }
 
 module.exports = {
+  fmt,
+  trunc,
   buildReviewOrderBlocks,
   buildZonePickerModal,
   buildProductSearchModal,
-  buildSearchResultsModal,
 };

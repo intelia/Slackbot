@@ -5,10 +5,11 @@ const { matchProduct, matchZone, getZoneById, getProductIndex, rideHailTiers, pi
 const { reconcile } = require('../parser/reconciler');
 const { pushToZupa } = require('../zupa');
 const {
+  fmt,
+  trunc,
   buildReviewOrderBlocks,
   buildZonePickerModal,
   buildProductSearchModal,
-  buildSearchResultsModal,
 } = require('./blocks');
 
 // ── In-memory order state ─────────────────────────────────────────────────────
@@ -197,45 +198,46 @@ async function handleSearchProduct({ ack, body, action, client }) {
   const channelId = body.container.channel_id;
   const ts = body.container.message_ts;
   const itemIndex = parseInt(action.value, 10);
-  const order = getOrder(channelId, ts);
-  const item = order && order.items.find(i => i.index === itemIndex);
 
   const privateMetadata = JSON.stringify({ channelId, ts });
   await client.views.open({
     trigger_id: body.trigger_id,
-    view: buildProductSearchModal(itemIndex, item ? item.productPhrase : '', privateMetadata),
+    view: buildProductSearchModal(itemIndex, privateMetadata),
   });
 }
 
-// ── Product search submitted → show results ───────────────────────────────────
+// ── External select options: called by Slack as user types ───────────────────
 
-async function handleProductSearchSubmit({ ack, body, view, client }) {
-  const meta = JSON.parse(view.private_metadata || '{}');
-  const { channelId, ts, itemIndex } = meta;
-  const query = view.state.values.search_query.query_input.value || '';
-  const sizeHint = view.state.values.size_input?.size_value?.value || null;
+async function handleProductSearchOptions({ options, ack }) {
+  const query = (options.value || '').trim();
 
-  const results = matchProduct(query, sizeHint, null);
-
-  if (results.length === 0) {
-    await ack({ response_action: 'update', view: buildSearchResultsModal([], itemIndex, view.private_metadata) });
-    return;
+  let candidates;
+  if (query.length < 2) {
+    candidates = getProductIndex()
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .flatMap(p => p.sizes.map(s => ({ productName: p.name, sizeName: s.name, sizeId: s.id, price: s.price })))
+      .slice(0, 100);
+  } else {
+    candidates = matchProduct(query, null, null, null, 100);
   }
 
   await ack({
-    response_action: 'push',
-    view: buildSearchResultsModal(results, itemIndex, view.private_metadata),
+    options: candidates.map(c => ({
+      text: { type: 'plain_text', text: trunc(`${c.productName} · ${c.sizeName} — ${fmt(c.price)}`, 75) },
+      value: c.sizeId,
+    })),
   });
 }
 
-// ── Search result selected → update item ─────────────────────────────────────
+// ── Product search submitted → update item ───────────────────────────────────
 
-async function handleSearchResultSubmit({ ack, body, view, client }) {
+async function handleProductSearchSubmit({ ack, body, view, client }) {
   await ack({ response_action: 'clear' });
 
   const meta = JSON.parse(view.private_metadata || '{}');
   const { channelId, ts, itemIndex } = meta;
-  const selectedSizeId = view.state.values.result_select.result_choice.selected_option?.value;
+  const selectedSizeId = view.state.values.product_select.product_search_select.selected_option?.value;
   if (!selectedSizeId) return;
 
   const order = getOrder(channelId, ts);
@@ -423,8 +425,8 @@ module.exports = {
   handleEditItem,
   handleDoneEditItem,
   handleSearchProduct,
+  handleProductSearchOptions,
   handleProductSearchSubmit,
-  handleSearchResultSubmit,
   handleChangeZone,
   handleZonePickerSubmit,
   handleConfirmOrder,

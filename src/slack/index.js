@@ -17,8 +17,10 @@ function createApp() {
   // ── Modal submissions ───────────────────────────────────────────────────────
   app.view('parse_order_submit', handlers.handleParseOrderSubmit);
   app.view('product_search_submit', handlers.handleProductSearchSubmit);
-  app.view('search_result_submit', handlers.handleSearchResultSubmit);
   app.view('zone_picker_submit', handlers.handleZonePickerSubmit);
+
+  // ── External select options ─────────────────────────────────────────────────
+  app.options('product_search_select', handlers.handleProductSearchOptions);
 
   // ── Actions ─────────────────────────────────────────────────────────────────
   // Product selection dropdown (matches product_pick_0, product_pick_1, etc.)
