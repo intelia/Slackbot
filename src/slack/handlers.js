@@ -1,16 +1,23 @@
-'use strict';
+"use strict";
 
-const { parse } = require('../parser/index');
-const { matchProduct, matchZone, getZoneById, getProductIndex, rideHailTiers, pickupRows } = require('../parser/matcher');
-const { reconcile } = require('../parser/reconciler');
-const { pushToZupa } = require('../zupa');
+const { parse } = require("../parser/index");
+const {
+  matchProduct,
+  matchZone,
+  getZoneById,
+  getProductIndex,
+  rideHailTiers,
+  pickupRows,
+} = require("../parser/matcher");
+const { reconcile } = require("../parser/reconciler");
+const { pushToZupa } = require("../zupa");
 const {
   fmt,
   trunc,
   buildReviewOrderBlocks,
   buildZonePickerModal,
   buildProductSearchModal,
-} = require('./blocks');
+} = require("./blocks");
 
 // ── In-memory order state ─────────────────────────────────────────────────────
 // Key: `${channelId}:${ts}` → DraftOrder
@@ -38,17 +45,18 @@ function reReconcile(order) {
   const { reconciliation, fulfillment, itemsSubtotal, orderTotal } = reconcile(
     order.items,
     order.fulfillment,
-    order.statedTotal
+    order.statedTotal,
   );
   order.reconciliation = reconciliation;
   order.fulfillment = fulfillment;
   order.itemsSubtotal = itemsSubtotal;
   order.orderTotal = orderTotal;
 
-  const hasUnresolved = order.items.some(i => i.issue !== null) ||
+  const hasUnresolved =
+    order.items.some((i) => i.issue !== null) ||
     !order.fulfillment.resolved ||
-    order.reconciliation.status === 'mismatch';
-  order.status = hasUnresolved ? 'needs_confirmation' : 'auto_accepted';
+    order.reconciliation.status === "mismatch";
+  order.status = hasUnresolved ? "needs_confirmation" : "auto_accepted";
   return order;
 }
 
@@ -59,22 +67,28 @@ async function handleParseOrderCommand({ command, ack, client }) {
   await client.views.open({
     trigger_id: command.trigger_id,
     view: {
-      type: 'modal',
-      callback_id: 'parse_order_submit',
+      type: "modal",
+      callback_id: "parse_order_submit",
       private_metadata: JSON.stringify({ channelId: command.channel_id }),
-      title: { type: 'plain_text', text: 'Parse Order' },
-      submit: { type: 'plain_text', text: 'Parse' },
-      close: { type: 'plain_text', text: 'Cancel' },
+      title: { type: "plain_text", text: "Parse Order" },
+      submit: { type: "plain_text", text: "Parse" },
+      close: { type: "plain_text", text: "Cancel" },
       blocks: [
         {
-          type: 'input',
-          block_id: 'raw_order',
-          label: { type: 'plain_text', text: 'Paste the raw order message below:' },
+          type: "input",
+          block_id: "raw_order",
+          label: {
+            type: "plain_text",
+            text: "Paste the raw order message below:",
+          },
           element: {
-            type: 'plain_text_input',
-            action_id: 'order_text',
+            type: "plain_text_input",
+            action_id: "order_text",
             multiline: true,
-            placeholder: { type: 'plain_text', text: 'Paste WhatsApp / IG DM text here…' },
+            placeholder: {
+              type: "plain_text",
+              text: "Paste WhatsApp / IG DM text here…",
+            },
           },
         },
       ],
@@ -87,7 +101,7 @@ async function handleParseOrderCommand({ command, ack, client }) {
 async function handleParseOrderSubmit({ ack, body, view, client }) {
   await ack();
 
-  const meta = JSON.parse(view.private_metadata || '{}');
+  const meta = JSON.parse(view.private_metadata || "{}");
   const channelId = meta.channelId;
   const rawText = view.state.values.raw_order.order_text.value;
 
@@ -98,7 +112,7 @@ async function handleParseOrderSubmit({ ack, body, view, client }) {
 
   const result = await client.chat.postMessage({
     channel: channelId,
-    text: 'Review Order',
+    text: "Review Order",
     blocks,
   });
 
@@ -111,7 +125,7 @@ async function handleParseOrderSubmit({ ack, body, view, client }) {
 
 async function handleMentionOrder({ event, client }) {
   const channelId = event.channel;
-  const rawText = (event.text || '').replace(/<@[A-Z0-9]+>/g, '').trim();
+  const rawText = (event.text || "").replace(/<@[A-Z0-9]+>/g, "").trim();
 
   if (!rawText) return;
 
@@ -121,7 +135,7 @@ async function handleMentionOrder({ event, client }) {
   const result = await client.chat.postMessage({
     channel: channelId,
     thread_ts: event.ts,
-    text: 'Review Order',
+    text: "Review Order",
     blocks,
   });
 
@@ -141,18 +155,21 @@ async function handleProductPick({ ack, body, action, client }) {
   if (!order) return;
 
   // action_id format: product_pick_${itemIndex}
-  const itemIndex = parseInt(action.action_id.replace('product_pick_', ''), 10);
+  const itemIndex = parseInt(action.action_id.replace("product_pick_", ""), 10);
   const selectedSizeId = action.selected_option.value;
 
   // Find the selected SKU in our product index
   let found = null;
   for (const product of getProductIndex()) {
-    const size = product.sizes.find(s => s.id === selectedSizeId);
-    if (size) { found = { product, size }; break; }
+    const size = product.sizes.find((s) => s.id === selectedSizeId);
+    if (size) {
+      found = { product, size };
+      break;
+    }
   }
   if (!found) return;
 
-  const item = order.items.find(i => i.index === itemIndex);
+  const item = order.items.find((i) => i.index === itemIndex);
   if (!item) return;
 
   item.productName = found.product.name;
@@ -160,8 +177,8 @@ async function handleProductPick({ ack, body, action, client }) {
   item.sizeId = found.size.id;
   item.unitPrice = found.size.price;
   item.lineTotal = found.size.price * item.qty;
-  item.confidence = 'high';
-  item.match = 'staff_confirmed';
+  item.confidence = "high";
+  item.match = "staff_confirmed";
   item.issue = null;
 
   reReconcile(order);
@@ -170,7 +187,7 @@ async function handleProductPick({ ack, body, action, client }) {
   await client.chat.update({
     channel: channelId,
     ts,
-    text: 'Review Order',
+    text: "Review Order",
     blocks: buildReviewOrderBlocks(order),
   });
 }
@@ -190,7 +207,7 @@ async function handleEditItem({ ack, body, action, client }) {
   await client.chat.update({
     channel: channelId,
     ts,
-    text: 'Review Order',
+    text: "Review Order",
     blocks: buildReviewOrderBlocks(order, itemIndex),
   });
 }
@@ -208,7 +225,7 @@ async function handleDoneEditItem({ ack, body, action, client }) {
   await client.chat.update({
     channel: channelId,
     ts,
-    text: 'Review Order',
+    text: "Review Order",
     blocks: buildReviewOrderBlocks(order, null),
   });
 }
@@ -232,22 +249,32 @@ async function handleSearchProduct({ ack, body, action, client }) {
 // ── External select options: called by Slack as user types ───────────────────
 
 async function handleProductSearchOptions({ options, ack }) {
-  const query = (options.value || '').trim();
+  const query = (options.value || "").trim();
 
   let candidates;
   if (query.length < 2) {
     candidates = getProductIndex()
       .slice()
       .sort((a, b) => a.name.localeCompare(b.name))
-      .flatMap(p => p.sizes.map(s => ({ productName: p.name, sizeName: s.name, sizeId: s.id, price: s.price })))
+      .flatMap((p) =>
+        p.sizes.map((s) => ({
+          productName: p.name,
+          sizeName: s.name,
+          sizeId: s.id,
+          price: s.price,
+        })),
+      )
       .slice(0, 100);
   } else {
     candidates = matchProduct(query, null, null, null, 100);
   }
 
   await ack({
-    options: candidates.map(c => ({
-      text: { type: 'plain_text', text: trunc(`${c.productName} · ${c.sizeName} — ${fmt(c.price)}`, 75) },
+    options: candidates.map((c) => ({
+      text: {
+        type: "plain_text",
+        text: trunc(`${c.productName} · ${c.sizeName} — ${fmt(c.price)}`, 75),
+      },
       value: c.sizeId,
     })),
   });
@@ -256,11 +283,13 @@ async function handleProductSearchOptions({ options, ack }) {
 // ── Product search submitted → update item ───────────────────────────────────
 
 async function handleProductSearchSubmit({ ack, body, view, client }) {
-  await ack({ response_action: 'clear' });
+  await ack({ response_action: "clear" });
 
-  const meta = JSON.parse(view.private_metadata || '{}');
+  const meta = JSON.parse(view.private_metadata || "{}");
   const { channelId, ts, itemIndex } = meta;
-  const selectedSizeId = view.state.values.product_select.product_search_select.selected_option?.value;
+  const selectedSizeId =
+    view.state.values.product_select.product_search_select.selected_option
+      ?.value;
   if (!selectedSizeId) return;
 
   const order = getOrder(channelId, ts);
@@ -268,12 +297,15 @@ async function handleProductSearchSubmit({ ack, body, view, client }) {
 
   let found = null;
   for (const product of getProductIndex()) {
-    const size = product.sizes.find(s => s.id === selectedSizeId);
-    if (size) { found = { product, size }; break; }
+    const size = product.sizes.find((s) => s.id === selectedSizeId);
+    if (size) {
+      found = { product, size };
+      break;
+    }
   }
   if (!found) return;
 
-  const item = order.items.find(i => i.index === itemIndex);
+  const item = order.items.find((i) => i.index === itemIndex);
   if (!item) return;
 
   item.productName = found.product.name;
@@ -281,8 +313,8 @@ async function handleProductSearchSubmit({ ack, body, view, client }) {
   item.sizeId = found.size.id;
   item.unitPrice = found.size.price;
   item.lineTotal = found.size.price * item.qty;
-  item.confidence = 'high';
-  item.match = 'staff_confirmed';
+  item.confidence = "high";
+  item.match = "staff_confirmed";
   item.issue = null;
 
   reReconcile(order);
@@ -291,7 +323,7 @@ async function handleProductSearchSubmit({ ack, body, view, client }) {
   await client.chat.update({
     channel: channelId,
     ts,
-    text: 'Review Order',
+    text: "Review Order",
     blocks: buildReviewOrderBlocks(order),
   });
 }
@@ -304,7 +336,9 @@ async function handleChangeZone({ ack, body, action, client }) {
   const channelId = body.container.channel_id;
   const ts = body.container.message_ts;
   const order = getOrder(channelId, ts);
-  const currentAddress = order ? (order.fulfillment.address || order.fulfillment.zoneName || '') : '';
+  const currentAddress = order
+    ? order.fulfillment.address || order.fulfillment.zoneName || ""
+    : "";
 
   const privateMetadata = JSON.stringify({ channelId, ts });
   await client.views.open({
@@ -316,47 +350,50 @@ async function handleChangeZone({ ack, body, action, client }) {
 // ── Zone picker submitted ─────────────────────────────────────────────────────
 
 async function handleZonePickerSubmit({ ack, body, view, client }) {
-  await ack({ response_action: 'clear' });
+  await ack({ response_action: "clear" });
 
-  const meta = JSON.parse(view.private_metadata || '{}');
+  const meta = JSON.parse(view.private_metadata || "{}");
   const { channelId, ts } = meta;
   const order = getOrder(channelId, ts);
   if (!order) return;
 
-  const namedZoneId = view.state.values.named_zone_select?.zone_select_input?.selected_option?.value;
-  const rideHailId  = view.state.values.ride_hail_select?.ride_hail_input?.selected_option?.value;
-  const zoneQuery   = view.state.values.zone_search?.zone_input?.value || '';
+  const namedZoneId =
+    view.state.values.named_zone_select?.zone_select_input?.selected_option
+      ?.value;
+  const rideHailId =
+    view.state.values.ride_hail_select?.ride_hail_input?.selected_option?.value;
+  const zoneQuery = view.state.values.zone_search?.zone_input?.value || "";
 
   if (namedZoneId) {
     const zone = getZoneById(namedZoneId);
     if (zone) {
-      order.fulfillment.zoneId   = zone.id;
+      order.fulfillment.zoneId = zone.id;
       order.fulfillment.zoneName = zone.name;
-      order.fulfillment.branch   = zone.branch;
-      order.fulfillment.fee      = zone.price;
+      order.fulfillment.branch = zone.branch;
+      order.fulfillment.fee = zone.price;
       order.fulfillment.resolved = true;
     }
   } else if (rideHailId) {
-    const tier = rideHailTiers.find(t => t.id === rideHailId);
+    const tier = rideHailTiers.find((t) => t.id === rideHailId);
     if (tier) {
-      order.fulfillment.zoneId   = tier.id;
+      order.fulfillment.zoneId = tier.id;
       order.fulfillment.zoneName = tier.name;
-      order.fulfillment.fee      = tier.price;
-      order.fulfillment.branch   = tier.branch;
+      order.fulfillment.fee = tier.price;
+      order.fulfillment.branch = tier.branch;
       order.fulfillment.resolved = true;
     }
   } else if (zoneQuery.trim()) {
     const zone = matchZone(zoneQuery.trim());
     if (zone) {
-      order.fulfillment.address  = zoneQuery.trim();
-      order.fulfillment.zoneId   = zone.id;
+      order.fulfillment.address = zoneQuery.trim();
+      order.fulfillment.zoneId = zone.id;
       order.fulfillment.zoneName = zone.name;
-      order.fulfillment.branch   = zone.branch;
-      order.fulfillment.fee      = zone.price;
+      order.fulfillment.branch = zone.branch;
+      order.fulfillment.fee = zone.price;
       order.fulfillment.resolved = true;
     } else {
-      order.fulfillment.address  = zoneQuery.trim();
-      order.fulfillment.zoneId   = null;
+      order.fulfillment.address = zoneQuery.trim();
+      order.fulfillment.zoneId = null;
       order.fulfillment.zoneName = null;
       order.fulfillment.resolved = false;
     }
@@ -368,7 +405,7 @@ async function handleZonePickerSubmit({ ack, body, view, client }) {
   await client.chat.update({
     channel: channelId,
     ts,
-    text: 'Review Order',
+    text: "Review Order",
     blocks: buildReviewOrderBlocks(order),
   });
 }
@@ -382,21 +419,27 @@ async function handleConfirmOrder({ ack, body, action, client }) {
   const ts = body.container.message_ts;
   const order = getOrder(channelId, ts);
   if (!order) {
-    await client.chat.postEphemeral({ channel: channelId, user: body.user.id, text: '⚠️ Order state not found. The bot may have restarted. Please re-parse the order.' });
-    return;
-  }
-
-  const unresolvedItems = order.items.filter(i => i.issue !== null);
-  const zoneUnresolved = !order.fulfillment.resolved || !order.fulfillment.zoneId;
-
-  if (unresolvedItems.length > 0 || zoneUnresolved) {
-    const reasons = [];
-    if (unresolvedItems.length > 0) reasons.push(`${unresolvedItems.length} unresolved item(s)`);
-    if (zoneUnresolved) reasons.push('delivery zone not set');
     await client.chat.postEphemeral({
       channel: channelId,
       user: body.user.id,
-      text: `⚠️ Cannot confirm yet: ${reasons.join(', ')}. Please resolve these first.`,
+      text: "⚠️ Order state not found. The bot may have restarted. Please re-parse the order.",
+    });
+    return;
+  }
+
+  const unresolvedItems = order.items.filter((i) => i.issue !== null);
+  const zoneUnresolved =
+    !order.fulfillment.resolved || !order.fulfillment.zoneId;
+
+  if (unresolvedItems.length > 0 || zoneUnresolved) {
+    const reasons = [];
+    if (unresolvedItems.length > 0)
+      reasons.push(`${unresolvedItems.length} unresolved item(s)`);
+    if (zoneUnresolved) reasons.push("delivery zone not set");
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: body.user.id,
+      text: `⚠️ Cannot confirm yet: ${reasons.join(", ")}. Please resolve these first.`,
     });
     return;
   }
@@ -406,7 +449,11 @@ async function handleConfirmOrder({ ack, body, action, client }) {
   try {
     pushResult = await pushToZupa(order, confirmedBy);
   } catch (err) {
-    await client.chat.postEphemeral({ channel: channelId, user: body.user.id, text: `❌ Zupa push failed: ${err.message}` });
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: body.user.id,
+      text: `❌ Zupa push failed: ${err.message}`,
+    });
     return;
   }
 
@@ -414,12 +461,19 @@ async function handleConfirmOrder({ ack, body, action, client }) {
 
   const successText = [
     `✅  *Order confirmed by <@${confirmedBy}>*`,
-    `Customer: ${order.customer.name || '—'}  |  ${order.fulfillment.type === 'pickup' ? 'Pickup' : 'Delivery'}: ${order.fulfillment.zoneName || '—'}`,
-    `Total: ₦${(order.orderTotal || 0).toLocaleString('en-NG')}`,
-    pushResult.zupaOrderId ? `Zupa Order ID: \`${pushResult.zupaOrderId}\`` : '_Payload logged (Zupa API not yet wired up)_',
-  ].join('\n');
+    `Customer: ${order.customer.name || "—"}  |  ${order.fulfillment.type === "pickup" ? "Pickup" : "Delivery"}: ${order.fulfillment.zoneName || "—"}`,
+    `Total: ₦${(order.orderTotal || 0).toLocaleString("en-NG")}`,
+    pushResult.orderNumber
+      ? `Zupa Order Number: \`${pushResult.orderNumber}\``
+      : "_Payload logged (Zupa API not yet wired up)_",
+  ].join("\n");
 
-  await client.chat.update({ channel: channelId, ts, text: successText, blocks: [] });
+  await client.chat.update({
+    channel: channelId,
+    ts,
+    text: successText,
+    blocks: [],
+  });
 }
 
 // ── Reject order ─────────────────────────────────────────────────────────────
