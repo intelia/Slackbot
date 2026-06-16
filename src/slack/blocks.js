@@ -1,6 +1,6 @@
 'use strict';
 
-const { rideHailTiers, namedZones } = require('../data/cities.clean.json');
+const { rideHailTiers } = require('../parser/matcher');
 
 function fmt(n) {
   if (n == null) return '—';

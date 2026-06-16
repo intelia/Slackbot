@@ -1,7 +1,7 @@
 'use strict';
 
 const { parse } = require('../parser/index');
-const { matchProduct, matchZone, getZoneById, PRODUCTS, namedZones, rideHailTiers, pickupRows } = require('../parser/matcher');
+const { matchProduct, matchZone, getZoneById, getProductIndex, namedZones, rideHailTiers, pickupRows } = require('../parser/matcher');
 const { reconcile } = require('../parser/reconciler');
 const { pushToZupa } = require('../zupa');
 const {
@@ -122,7 +122,7 @@ async function handleProductPick({ ack, body, action, client }) {
 
   // Find the selected SKU in our product index
   let found = null;
-  for (const product of PRODUCTS) {
+  for (const product of getProductIndex()) {
     const size = product.sizes.find(s => s.id === selectedSizeId);
     if (size) { found = { product, size }; break; }
   }
@@ -242,7 +242,7 @@ async function handleSearchResultSubmit({ ack, body, view, client }) {
   if (!order) return;
 
   let found = null;
-  for (const product of PRODUCTS) {
+  for (const product of getProductIndex()) {
     const size = product.sizes.find(s => s.id === selectedSizeId);
     if (size) { found = { product, size }; break; }
   }

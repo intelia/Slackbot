@@ -1,61 +1,59 @@
 'use strict';
 
-// Emit the Zupa-ready order payload.
-// In Phase 1 this logs and returns the payload.
-// Phase 2: replace the stub with the actual Zupa API call.
+const path = require('path');
+const SystemProducts = require(path.join(__dirname, '..', 'systemProducts'));
 
-function buildPayload(order, confirmedBy) {
+// Convert local phone format (09028920538) to international (+2349028920538)
+function formatPhone(phone) {
+  if (!phone) return null;
+  const digits = phone.replace(/\D/g, '');
+  if (digits.startsWith('0') && digits.length === 11) return '+234' + digits.slice(1);
+  if (digits.startsWith('234') && digits.length === 13)  return '+' + digits;
+  return phone;
+}
+
+// Build the payload expected by SystemProducts.createOrder
+function buildZupaPayload(order) {
+  const specialNoteParts = [];
+  if (order.notes && order.notes.length > 0) specialNoteParts.push(order.notes.join(' '));
+  if (order.customer.instagram) specialNoteParts.push(`IG: ${order.customer.instagram}`);
+
+  const isPickup = order.fulfillment.type === 'pickup';
+
   return {
-    status: 'confirmed',
-    source: 'whatsapp',
-    raw_message: order.rawMessage,
     customer: {
-      name: order.customer.name || null,
-      instagram: order.customer.instagram || null,
-      phone: order.customer.phone || null,
+      name:        order.customer.name || null,
+      phoneNumber: formatPhone(order.customer.phone),
     },
-    fulfillment: {
-      type: order.fulfillment.type,
-      branch: order.fulfillment.branch || null,
-      address: order.fulfillment.address || null,
-      zone_id: order.fulfillment.zoneId || null,
-      zone_name: order.fulfillment.zoneName || null,
-      delivery_fee: order.fulfillment.fee || 0,
+    order: {
+      amount:      order.orderTotal,
+      specialNote: specialNoteParts.join(' | ') || '',
+      items: order.items.map(item => ({
+        productId: item.sizeId,       // size-level UUID is the Zupa join key
+        quantity:  item.qty,
+        price:     item.unitPrice,
+      })),
     },
-    items: order.items.map(item => ({
-      size_id: item.sizeId,
-      product_name: item.productName,
-      size: item.sizeName,
-      qty: item.qty,
-      unit_price: item.unitPrice,
-      line_total: item.lineTotal,
-      match: item.match,
-    })),
-    items_subtotal: order.itemsSubtotal,
-    order_total: order.orderTotal,
-    reconciliation: order.reconciliation.status,
-    confirmed_by: confirmedBy,
-    notes: order.notes || [],
-    overrides: [],
+    address: {
+      deliveryAddress: isPickup ? null : (order.fulfillment.address || null),
+      isPickup,
+      cityId:      order.fulfillment.zoneId || null,
+      pickupStore: isPickup ? (order.fulfillment.branch || 'lekki').toLowerCase() : undefined,
+    },
   };
 }
 
 async function pushToZupa(order, confirmedBy) {
-  const payload = buildPayload(order, confirmedBy);
+  const payload = buildZupaPayload(order);
 
-  // Phase 1: log payload; Phase 2: POST to Zupa API
-  console.log('[Zupa] Order confirmed:', JSON.stringify(payload, null, 2));
+  console.log(`[Zupa] Pushing order confirmed by ${confirmedBy}:`, JSON.stringify(payload, null, 2));
 
-  // TODO Phase 2: uncomment and configure
-  // const response = await fetch(process.env.ZUPA_API_URL, {
-  //   method: 'POST',
-  //   headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${process.env.ZUPA_API_KEY}` },
-  //   body: JSON.stringify(payload),
-  // });
-  // if (!response.ok) throw new Error(`Zupa API error: ${response.status}`);
-  // return response.json();
+  const res = await SystemProducts.createOrder(payload);
 
-  return { payload, zupaOrderId: null };
+  if (!res) throw new Error('No response from Zupa API');
+  if (res.status === 'error') throw new Error(res.message || 'Zupa API returned an error');
+
+  return { payload, zupaOrderId: res.id || res.orderId || res.data?.id || null, raw: res };
 }
 
-module.exports = { pushToZupa, buildPayload };
+module.exports = { pushToZupa, buildZupaPayload };

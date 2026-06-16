@@ -1,19 +1,20 @@
 'use strict';
 
-const { namedZones } = require('../data/cities.clean.json');
+const store = require('../data/store');
+
+function namedZones() { return store.getCities().namedZones; }
 
 // Match a monetary gap to a known named zone fee (base zones only)
 function gapMatchesZone(gap) {
   if (!gap || gap <= 0) return null;
-  const match = namedZones.find(z => !z.isSurge && z.price === gap);
-  return match || null;
+  return namedZones().find(z => !z.isSurge && z.price === gap) || null;
 }
 
 // Match a monetary gap to a surge zone fee
 function gapMatchesSurge(gap, baseZone) {
   if (!gap || gap <= 0 || !baseZone) return null;
   const surgeIds = baseZone.surgeTwinIds || [];
-  return namedZones.find(z => surgeIds.includes(z.id) && z.price === gap) || null;
+  return namedZones().find(z => surgeIds.includes(z.id) && z.price === gap) || null;
 }
 
 function fmt(n) {
@@ -72,7 +73,7 @@ function reconcile(items, fulfillment, statedTotal) {
   if (gap > 0) {
     // Check if gap matches current zone's base fee (delivery not yet added)
     if (fulfillment.zoneId && !fulfillment.resolved) {
-      const zone = namedZones.find(z => z.id === fulfillment.zoneId);
+      const zone = namedZones().find(z => z.id === fulfillment.zoneId);
       if (zone && zone.price === gap) {
         const updatedFulfillment = { ...fulfillment, fee: gap, resolved: true };
         return {
@@ -90,7 +91,7 @@ function reconcile(items, fulfillment, statedTotal) {
 
     // Check if gap matches a surge twin of the current zone
     if (fulfillment.zoneId) {
-      const zone = namedZones.find(z => z.id === fulfillment.zoneId);
+      const zone = namedZones().find(z => z.id === fulfillment.zoneId);
       const surge = gapMatchesSurge(gap, zone);
       if (surge) {
         const updatedFulfillment = { ...fulfillment, fee: gap, zoneId: surge.id, zoneName: surge.name, resolved: true };

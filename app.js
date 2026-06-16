@@ -2,8 +2,16 @@
 
 require('dotenv').config();
 const { createApp } = require('./src/slack/index');
+const loader = require('./src/data/loader');
 
 (async () => {
+  // Fetch live products + cities from Zupa API before starting.
+  // Falls back to static clean files if the API is unreachable.
+  await loader.init();
+
+  // Refresh data every hour while the bot is running
+  setInterval(() => loader.refreshIfStale(), 10 * 60 * 1000); // check every 10 min
+
   const app = createApp();
   const port = parseInt(process.env.PORT || '3000', 10);
   await app.start(port);
