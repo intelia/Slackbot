@@ -10,7 +10,7 @@ const loader = require('./src/data/loader');
   await loader.init();
 
   // Refresh data every hour while the bot is running
-  setInterval(() => loader.refreshIfStale(), 10 * 60 * 1000); // check every 10 min
+  setInterval(() => loader.refreshIfStale(), 24 * 60 * 60 * 1000); // check every 24 hours
 
   const app = createApp();
   const port = parseInt(process.env.PORT || '3000', 10);

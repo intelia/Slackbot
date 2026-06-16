@@ -20,7 +20,7 @@ function resolveItem(itemLine) {
     };
   }
 
-  const candidates = matchProduct(productPhrase, sizeToken, statedPrice);
+  const candidates = matchProduct(productPhrase, sizeToken, statedPrice, qty);
 
   if (candidates.length === 0) {
     return {
@@ -59,11 +59,15 @@ function resolveItem(itemLine) {
     issue = 'ambiguous_product';
   }
 
-  // Price mismatch check (only when we have a stated price and high confidence)
-  if (statedPrice && best.price !== statedPrice && confidence === 'high') {
-    confidence = 'low';
-    match = 'unresolved';
-    issue = 'price_mismatch';
+  // Price mismatch check — statedPrice may be a unit price OR a line total
+  if (statedPrice && confidence === 'high') {
+    const unitFromTotal = qty > 1 ? Math.round(statedPrice / qty) : null;
+    const priceOk = best.price === statedPrice || (unitFromTotal && best.price === unitFromTotal);
+    if (!priceOk) {
+      confidence = 'low';
+      match = 'unresolved';
+      issue = 'price_mismatch';
+    }
   }
 
   const unitPrice = best.price;

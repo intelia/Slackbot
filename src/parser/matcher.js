@@ -106,12 +106,16 @@ function findSize(product, sizeName) {
 
 // ── Product match ─────────────────────────────────────────────────────────────
 
-function matchProduct(productPhrase, sizeToken, statedPrice) {
+function matchProduct(productPhrase, sizeToken, statedPrice, qty) {
   const phraseNorm  = normalize(productPhrase);
   const phraseTokens = tokenize(phraseNorm);
   const canonSize   = canonicalSize(sizeToken);
   const SCORE_THRESHOLD = 0.25;
   const candidates  = [];
+
+  // statedPrice may be a unit price OR a line total; derive both possibilities
+  const effectiveQty   = (qty && qty > 1) ? qty : 1;
+  const unitFromTotal  = (statedPrice && effectiveQty > 1) ? Math.round(statedPrice / effectiveQty) : null;
 
   for (const product of _productIndex) {
     if (product.sizes.length === 0) continue;
@@ -130,6 +134,11 @@ function matchProduct(productPhrase, sizeToken, statedPrice) {
       let priceMatch = false;
 
       if (statedPrice && size.price === statedPrice) {
+        // unit price matches directly
+        skuScore   = Math.min(1, skuScore + 0.4);
+        priceMatch = true;
+      } else if (unitFromTotal && size.price === unitFromTotal) {
+        // statedPrice is the line total; unit price matches when divided by qty
         skuScore   = Math.min(1, skuScore + 0.4);
         priceMatch = true;
       } else if (statedPrice && Math.abs(size.price - statedPrice) / statedPrice < 0.05) {
