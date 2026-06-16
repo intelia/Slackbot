@@ -1,6 +1,6 @@
 'use strict';
 
-const { rideHailTiers } = require('../parser/matcher');
+const { rideHailTiers, namedZones } = require('../parser/matcher');
 
 function fmt(n) {
   if (n == null) return '—';
@@ -261,7 +261,33 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
 
 // ── Zone change modal ─────────────────────────────────────────────────────────
 
+function buildNamedZoneOptionGroups() {
+  const nonSurge = namedZones.filter(z => !z.isSurge);
+  const byBranch = {};
+  for (const z of nonSurge) {
+    (byBranch[z.branch] = byBranch[z.branch] || []).push(z);
+  }
+  const groups = [];
+  let remaining = 100;
+  for (const branch of ['Lekki', 'Mainland', 'Opebi']) {
+    if (remaining <= 0) break;
+    const zones = (byBranch[branch] || []).sort((a, b) => a.name.localeCompare(b.name));
+    const slice = zones.slice(0, remaining);
+    if (slice.length === 0) continue;
+    groups.push({
+      label: { type: 'plain_text', text: `${branch} Branch` },
+      options: slice.map(z => ({
+        text: { type: 'plain_text', text: trunc(`${z.name} — ${fmt(z.price)}`, 75) },
+        value: z.id,
+      })),
+    });
+    remaining -= slice.length;
+  }
+  return groups;
+}
+
 function buildZonePickerModal(currentAddress, privateMetadata) {
+  const namedZoneGroups = buildNamedZoneOptionGroups();
   const rideHailOptions = rideHailTiers.map(t => ({
     text: { type: 'plain_text', text: trunc(`${t.name} — ${fmt(t.price)}`, 75) },
     value: t.id,
@@ -277,15 +303,29 @@ function buildZonePickerModal(currentAddress, privateMetadata) {
     blocks: [
       {
         type: 'input',
+        block_id: 'named_zone_select',
+        label: { type: 'plain_text', text: 'Select delivery zone' },
+        optional: true,
+        element: {
+          type: 'static_select',
+          action_id: 'zone_select_input',
+          placeholder: { type: 'plain_text', text: 'Browse zones by branch…' },
+          option_groups: namedZoneGroups,
+        },
+        hint: { type: 'plain_text', text: 'Shows up to 100 zones. For unlisted areas use the text box below.' },
+      },
+      { type: 'divider' },
+      {
+        type: 'input',
         block_id: 'zone_search',
-        label: { type: 'plain_text', text: 'Enter delivery area / zone name' },
+        label: { type: 'plain_text', text: 'Or type a zone / area name' },
+        optional: true,
         element: {
           type: 'plain_text_input',
           action_id: 'zone_input',
           initial_value: currentAddress || '',
-          placeholder: { type: 'plain_text', text: 'e.g. Ikoyi, Lekki Phase 1, Alapere…' },
+          placeholder: { type: 'plain_text', text: 'e.g. Ikoyi, Alapere, Chevron…' },
         },
-        hint: { type: 'plain_text', text: 'The bot will match this to the nearest zone. Saved matches update the alias map.' },
       },
       { type: 'divider' },
       {

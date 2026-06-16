@@ -2,6 +2,7 @@
 
 const { OpenAI } = require('openai');
 const { segment: ruleSegment } = require('./segmenter');
+const store = require('../data/store');
 
 let _client = null;
 
@@ -15,7 +16,7 @@ function getClient() {
 
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
-const SYSTEM_PROMPT = `You are an order extraction assistant for Gourmet Twist, a bakery in Lagos, Nigeria.
+const BASE_SYSTEM_PROMPT = `You are an order extraction assistant for Gourmet Twist, a bakery in Lagos, Nigeria.
 
 Parse raw WhatsApp/Instagram DM order messages — they are often messy, informal, and inconsistently formatted.
 
@@ -23,6 +24,7 @@ Extraction rules:
 - Nigerian phone numbers: 07xxx / 08xxx / 09xxx (11 digits) or +234xxx (13 digits). Extract as-is (no formatting changes).
 - Instagram handles always start with @. Keep the @ prefix.
 - For each ORDER ITEM extract: productPhrase (product name only, no size/qty/price), sizeToken, qty, statedPrice.
+- CRITICAL: productPhrase must be the FULL product name from the CATALOGUE below. Customers often abbreviate — resolve abbreviations to the closest catalogue name. E.g. "banana" → "Banana Bread", "choc cake" → "Chocolate Cake". Never truncate or abbreviate.
 - sizeToken must be EXACTLY one of these values or null: mini, midi, regular, maxi, extra large, 6", 8", 10", 12", 14", standard, pack, packs, 25cl, 50cl, 1l, bowl
 - Quantities: "x2", "2x", "×2", "(2)", "2 packs", "two" → integer 2. Default qty = 1 if not stated.
 - Prices: "3000", "₦3,000", "3k", "3,500" → extract as a plain number (e.g. 3000, 3500). "3k" → 3000.
@@ -36,6 +38,13 @@ Extraction rules:
 - Ignore lines that are clearly noise: orphan letters/characters, "eye -" without context, greetings with no content.
 
 Return ONLY the JSON object matching the schema. Do not include explanation.`;
+
+function buildSystemPrompt() {
+  const products = store.getProducts();
+  if (!products || products.length === 0) return BASE_SYSTEM_PROMPT;
+  const catalogueList = products.map(p => p.name).join('\n');
+  return `${BASE_SYSTEM_PROMPT}\n\nCATALOGUE (exact product names — match customer text to the closest name here):\n${catalogueList}`;
+}
 
 // OpenAI structured-output schema (strict: true compatible)
 const RESPONSE_FORMAT = {
@@ -99,7 +108,7 @@ async function aiSegment(rawMessage) {
     temperature: 0,
     response_format: RESPONSE_FORMAT,
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: buildSystemPrompt() },
       { role: 'user', content: rawMessage },
     ],
   });

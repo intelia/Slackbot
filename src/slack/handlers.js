@@ -1,7 +1,7 @@
 'use strict';
 
 const { parse } = require('../parser/index');
-const { matchProduct, matchZone, getZoneById, getProductIndex, namedZones, rideHailTiers, pickupRows } = require('../parser/matcher');
+const { matchProduct, matchZone, getZoneById, getProductIndex, rideHailTiers, pickupRows } = require('../parser/matcher');
 const { reconcile } = require('../parser/reconciler');
 const { pushToZupa } = require('../zupa');
 const {
@@ -298,31 +298,40 @@ async function handleZonePickerSubmit({ ack, body, view, client }) {
   const order = getOrder(channelId, ts);
   if (!order) return;
 
-  const zoneQuery = view.state.values.zone_search?.zone_input?.value || '';
-  const rideHailId = view.state.values.ride_hail_select?.ride_hail_input?.selected_option?.value;
+  const namedZoneId = view.state.values.named_zone_select?.zone_select_input?.selected_option?.value;
+  const rideHailId  = view.state.values.ride_hail_select?.ride_hail_input?.selected_option?.value;
+  const zoneQuery   = view.state.values.zone_search?.zone_input?.value || '';
 
-  if (rideHailId) {
+  if (namedZoneId) {
+    const zone = getZoneById(namedZoneId);
+    if (zone) {
+      order.fulfillment.zoneId   = zone.id;
+      order.fulfillment.zoneName = zone.name;
+      order.fulfillment.branch   = zone.branch;
+      order.fulfillment.fee      = zone.price;
+      order.fulfillment.resolved = true;
+    }
+  } else if (rideHailId) {
     const tier = rideHailTiers.find(t => t.id === rideHailId);
     if (tier) {
-      order.fulfillment.zoneId = tier.id;
+      order.fulfillment.zoneId   = tier.id;
       order.fulfillment.zoneName = tier.name;
-      order.fulfillment.fee = tier.price;
-      order.fulfillment.branch = tier.branch;
+      order.fulfillment.fee      = tier.price;
+      order.fulfillment.branch   = tier.branch;
       order.fulfillment.resolved = true;
     }
   } else if (zoneQuery.trim()) {
     const zone = matchZone(zoneQuery.trim());
     if (zone) {
-      order.fulfillment.address = zoneQuery.trim();
-      order.fulfillment.zoneId = zone.id;
+      order.fulfillment.address  = zoneQuery.trim();
+      order.fulfillment.zoneId   = zone.id;
       order.fulfillment.zoneName = zone.name;
-      order.fulfillment.branch = zone.branch;
-      order.fulfillment.fee = zone.price;
+      order.fulfillment.branch   = zone.branch;
+      order.fulfillment.fee      = zone.price;
       order.fulfillment.resolved = true;
     } else {
-      // No match — keep as unresolved but store the address for manual override
-      order.fulfillment.address = zoneQuery.trim();
-      order.fulfillment.zoneId = null;
+      order.fulfillment.address  = zoneQuery.trim();
+      order.fulfillment.zoneId   = null;
       order.fulfillment.zoneName = null;
       order.fulfillment.resolved = false;
     }
