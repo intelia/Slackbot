@@ -107,6 +107,29 @@ async function handleParseOrderSubmit({ ack, body, view, client }) {
   }
 }
 
+// ── App mention: @bot <order text> → parse + post review ─────────────────────
+
+async function handleMentionOrder({ event, client }) {
+  const channelId = event.channel;
+  const rawText = (event.text || '').replace(/<@[A-Z0-9]+>/g, '').trim();
+
+  if (!rawText) return;
+
+  const order = await parse(rawText);
+  const blocks = buildReviewOrderBlocks(order);
+
+  const result = await client.chat.postMessage({
+    channel: channelId,
+    thread_ts: event.ts,
+    text: 'Review Order',
+    blocks,
+  });
+
+  if (result.ts) {
+    saveOrder(channelId, result.ts, order);
+  }
+}
+
 // ── Product picker: dropdown selection ───────────────────────────────────────
 
 async function handleProductPick({ ack, body, action, client }) {
@@ -366,11 +389,10 @@ async function handleConfirmOrder({ ack, body, action, client }) {
   const unresolvedItems = order.items.filter(i => i.issue !== null);
   const zoneUnresolved = !order.fulfillment.resolved || !order.fulfillment.zoneId;
 
-  if (unresolvedItems.length > 0 || zoneUnresolved || order.reconciliation.status === 'mismatch') {
+  if (unresolvedItems.length > 0 || zoneUnresolved) {
     const reasons = [];
     if (unresolvedItems.length > 0) reasons.push(`${unresolvedItems.length} unresolved item(s)`);
     if (zoneUnresolved) reasons.push('delivery zone not set');
-    if (order.reconciliation.status === 'mismatch') reasons.push('total doesn\'t reconcile');
     await client.chat.postEphemeral({
       channel: channelId,
       user: body.user.id,
@@ -421,6 +443,7 @@ async function handleRejectOrder({ ack, body, action, client }) {
 module.exports = {
   handleParseOrderCommand,
   handleParseOrderSubmit,
+  handleMentionOrder,
   handleProductPick,
   handleEditItem,
   handleDoneEditItem,

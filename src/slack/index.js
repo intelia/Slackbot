@@ -14,6 +14,9 @@ function createApp() {
   // ── Commands ────────────────────────────────────────────────────────────────
   app.command('/parse-order', handlers.handleParseOrderCommand);
 
+  // ── Events ──────────────────────────────────────────────────────────────────
+  app.event('app_mention', handlers.handleMentionOrder);
+
   // ── Modal submissions ───────────────────────────────────────────────────────
   app.view('parse_order_submit', handlers.handleParseOrderSubmit);
   app.view('product_search_submit', handlers.handleProductSearchSubmit);

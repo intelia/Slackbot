@@ -142,9 +142,12 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
 
   // Header
   const needsReviewCount = unresolvedItems.length + (zoneUnresolved ? 1 : 0);
-  const statusText = needsReviewCount === 0
-    ? (order.status === 'auto_accepted' ? '✅  *Auto-accepted* — verify and confirm' : '✅  *All items resolved* — ready to confirm')
-    : `⚠️  *Needs review* — ${needsReviewCount} unresolved`;
+  const hasMismatch = needsReviewCount === 0 && order.reconciliation.status === 'mismatch';
+  const statusText = needsReviewCount > 0
+    ? `⚠️  *Needs review* — ${needsReviewCount} unresolved`
+    : hasMismatch
+    ? `⚠️  *Price mismatch* — all items resolved but total is off by ${fmt(Math.abs(order.reconciliation.gap))}`
+    : order.status === 'auto_accepted' ? '✅  *Auto-accepted* — verify and confirm' : '✅  *All items resolved* — ready to confirm';
 
   blocks.push({
     type: 'section',
@@ -226,9 +229,28 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
   blocks.push({ type: 'divider' });
 
   // Action buttons
-  const canConfirm = unresolvedItems.length === 0 &&
-    !zoneUnresolved &&
-    order.reconciliation.status !== 'mismatch';
+  const canConfirm = unresolvedItems.length === 0 && !zoneUnresolved;
+
+  const confirmButton = {
+    type: 'button',
+    text: { type: 'plain_text', text: canConfirm ? 'Confirm & Push to Zupa' : '🔒 Resolve issues first' },
+    style: canConfirm ? 'primary' : undefined,
+    action_id: 'confirm_order',
+    value: 'confirm',
+  };
+
+  if (hasMismatch) {
+    const gapText = fmt(Math.abs(order.reconciliation.gap));
+    confirmButton.confirm = {
+      title: { type: 'plain_text', text: 'Price mismatch — confirm anyway?' },
+      text: {
+        type: 'mrkdwn',
+        text: `Total is off by *${gapText}*${order.reconciliation.hypothesis ? ' — ' + order.reconciliation.hypothesis : ''}. Submit to Zupa anyway?`,
+      },
+      confirm: { type: 'plain_text', text: 'Yes, submit anyway' },
+      deny: { type: 'plain_text', text: 'Cancel' },
+    };
+  }
 
   blocks.push({
     type: 'actions',
@@ -246,13 +268,7 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
           deny: { type: 'plain_text', text: 'Cancel' },
         },
       },
-      {
-        type: 'button',
-        text: { type: 'plain_text', text: canConfirm ? 'Confirm & Push to Zupa' : '🔒 Resolve issues first' },
-        style: canConfirm ? 'primary' : undefined,
-        action_id: 'confirm_order',
-        value: 'confirm',
-      },
+      confirmButton,
     ],
   });
 
