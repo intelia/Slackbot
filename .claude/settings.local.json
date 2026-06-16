@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const p = require\\('./products.json'\\); console.log\\('Product count:', p.length\\); console.log\\('Sample:', JSON.stringify\\(p.slice\\(0,2\\), null, 2\\)\\)\")",
+      "Bash(node -e \"const c = require\\('./cities.json'\\); console.log\\('City count:', c.length\\); console.log\\('Sample:', JSON.stringify\\(c.slice\\(0,5\\), null, 2\\)\\)\")",
+      "Bash(node *)",
+      "Bash(npm install *)"
+    ]
+  }
+}

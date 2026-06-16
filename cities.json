@@ -1,0 +1,1307 @@
+[
+  {
+    "name": "Abijo",
+    "id": "245a2a8e-959a-4587-afe2-04d447d73a07",
+    "price": 7000
+  },
+  {
+    "name": "Uber Delivery 9",
+    "id": "7e132773-7d92-41cf-a27e-31aee6fad544",
+    "price": 9000
+  },
+  {
+    "name": "LEKKI-MARUWA",
+    "id": "01244cb3-478e-44cf-b836-e03a5e2c1d60",
+    "price": 2500
+  },
+  {
+    "name": "GTFREE",
+    "id": "d052e43b-f01c-4eda-9593-1852a0810c12",
+    "price": 0
+  },
+  {
+    "name": "LEKKI -VGC",
+    "id": "675cfe9d-f9f7-454d-9833-89cfe40d4c8f",
+    "price": 4500
+  },
+  {
+    "name": "Isolo (Mainland Store)",
+    "id": "192319e9-e89d-41b1-989e-813f6dbe5f37",
+    "price": 5000
+  },
+  {
+    "name": "Lekki - Chevron",
+    "id": "eb3ab97e-4475-41d0-a3be-4fd56d107c5d",
+    "price": 3500
+  },
+  {
+    "name": "Ajah - Sangotedo",
+    "id": "aa561227-dcb4-40e4-a66d-3e711c375dcb",
+    "price": 6000
+  },
+  {
+    "name": "Lekki - Ologolo Spg",
+    "id": "b12e8159-90a3-4c15-af96-29ac0aa14955",
+    "price": 3300
+  },
+  {
+    "name": "Lekki-Chisco",
+    "id": "68575e56-8a7d-4a76-b75b-40c4b3fc8470",
+    "price": 3000
+  },
+  {
+    "name": "Lekki - Orchid",
+    "id": "f482426d-9874-4488-abba-d8ac6031086a",
+    "price": 4000
+  },
+  {
+    "name": "IKOTA",
+    "id": "5371df5a-eb38-4790-87f1-11ae74ac76cc",
+    "price": 4000
+  },
+  {
+    "name": "Ilasan",
+    "id": "74200d1e-3d9c-4925-aa84-64253ea4cebe",
+    "price": 3000
+  },
+  {
+    "name": "LEKKI-IGBOEFON",
+    "id": "19acaeeb-6588-4f81-8b52-9620f94f1bac",
+    "price": 3500
+  },
+  {
+    "name": "LEKKI-AJAH",
+    "id": "a2750cf6-1971-4bed-9824-117f26b74fef",
+    "price": 5000
+  },
+  {
+    "name": "Oworoshoki (Mainland Store)",
+    "id": "249f6fdc-8459-4a77-ad60-ae55cc850ed3",
+    "price": 4000
+  },
+  {
+    "name": "LEKKI-IKATE ELEGUSHI",
+    "id": "de63d2b8-97af-45c7-b501-7c534930cb89",
+    "price": 3000
+  },
+  {
+    "name": "Alpha Beach",
+    "id": "cf5ad30e-0df1-4fda-8579-21d44ebf45d8",
+    "price": 3500
+  },
+  {
+    "name": "Ajah  - Ogombo",
+    "id": "643bfda5-d096-485d-8a35-1ab57ae10281",
+    "price": 5500
+  },
+  {
+    "name": "Ikoyi",
+    "id": "76c21be0-2261-400d-95c5-2d1093f37121",
+    "price": 3500
+  },
+  {
+    "name": "LEKKI-AGUNGI",
+    "id": "d96ac7b9-5b27-4633-b209-e8a9e46fa38d",
+    "price": 3300
+  },
+  {
+    "name": "Ijora (Mainland Store)",
+    "id": "6652add1-0089-4480-a999-497dcc5cfcd8",
+    "price": 5000
+  },
+  {
+    "name": "Ajah - Ilaje",
+    "id": "ce8237e2-85d5-4a2a-84c0-496afafa5496",
+    "price": 5000
+  },
+  {
+    "name": "Lekki - Salem",
+    "id": "bba0ab02-561e-46f7-bed7-d6f8aed8c616",
+    "price": 3000
+  },
+  {
+    "name": "Agbara (Mainland Store)",
+    "id": "6d62e719-ebd0-4c0e-bb33-0f642b8a046b",
+    "price": 12000
+  },
+  {
+    "name": "Lagos -Island ",
+    "id": "234956b7-cd98-4fb9-8ab0-5c9a925be6d9",
+    "price": 4500
+  },
+  {
+    "name": "LEKKI-ELF",
+    "id": "d635e1a2-f077-42f5-99dd-6ff0a8f3e3df",
+    "price": 2500
+  },
+  {
+    "name": "Igando (Mainland Store)",
+    "id": "f3dd88e7-d190-458b-ab27-d40093fdb106",
+    "price": 7000
+  },
+  {
+    "name": "College Road (Mainland Store)",
+    "id": "b120b2d5-c9d3-47cd-bf8c-42c9621f1c60",
+    "price": 3500
+  },
+  {
+    "name": "Iyana oworo (Mainland Store)",
+    "id": "265786fc-9364-402f-b2e5-1f7e434e6fb8",
+    "price": 4000
+  },
+  {
+    "name": "Ajah - Langbasa",
+    "id": "f5936103-53ac-415c-84c9-ec03d7793686",
+    "price": 5500
+  },
+  {
+    "name": "Oyingbo (Mainland Store)",
+    "id": "f59f66ca-5106-455e-a0ea-6ae7df3c57b4",
+    "price": 4500
+  },
+  {
+    "name": "Tradefair (Mainland Store)",
+    "id": "2ff8bb2e-05ca-41b4-9a05-6f0a38f7e956",
+    "price": 7000
+  },
+  {
+    "name": "Eleko ",
+    "id": "88628861-4d33-44f6-8c01-198b1f16ea0e",
+    "price": 12000
+  },
+  {
+    "name": "Pickup",
+    "id": "9e569d9b-828b-4ee2-ad3a-1f39444a89bd",
+    "price": 0
+  },
+  {
+    "name": "UBER DELIVERY.",
+    "id": "c32eb1e2-e9d6-4795-8544-f95d1dab895a",
+    "price": 14000
+  },
+  {
+    "name": "Lekki Igboefon ( Surge )",
+    "id": "65ef53d7-9356-4bf2-8a26-be932923ab71",
+    "price": 4500
+  },
+  {
+    "name": "Ojo (Mainland Store)",
+    "id": "e54d781a-62ce-4a45-a084-0697decf6498",
+    "price": 7500
+  },
+  {
+    "name": "Uber Delivery",
+    "id": "6ae38a79-c980-44ac-829a-78e3854a71dd",
+    "price": 12000
+  },
+  {
+    "name": "Uber Delivery 10",
+    "id": "7318fdc6-1fe5-4c2e-9988-a68cb75b74b7",
+    "price": 10000
+  },
+  {
+    "name": "Ogba. (Mainland Store)",
+    "id": "d944acd5-0eb9-4bb5-990c-738f226098ad",
+    "price": 3500
+  },
+  {
+    "name": "Isashi (Mainland Store)",
+    "id": "3d6da357-5651-4d24-bd6f-a58969aa8df1",
+    "price": 10000
+  },
+  {
+    "name": "GTFREE Opebi",
+    "id": "63ab9940-3697-4387-a601-20943b47f025",
+    "price": 0
+  },
+  {
+    "name": "Bolt Delivery 6.5(Mainland Store)",
+    "id": "ff0b4e85-f82e-4ddd-81ae-2206cd306c58",
+    "price": 6500
+  },
+  {
+    "name": "Uber Delivery 5k",
+    "id": "7c64f7b1-d818-4834-9dbe-a63eb8d23bb9",
+    "price": 5000
+  },
+  {
+    "name": "Ojokoro (Mainland Store)",
+    "id": "3e8e7bc3-6fa5-45fe-bd79-d8fc7333f3e4",
+    "price": 7000
+  },
+  {
+    "name": "Shogunle (Mainland Store)",
+    "id": "4e2c2672-637b-46b1-9ec9-12be01ce38ab",
+    "price": 4000
+  },
+  {
+    "name": "Uber Delivery 8",
+    "id": "203d6216-0f93-478d-82b2-c989c645c77e",
+    "price": 8000
+  },
+  {
+    "name": "Bolt Delivery 4 (Mainland Store)",
+    "id": "fa46d3aa-11e2-410f-bd28-e9306ad82acf",
+    "price": 4000
+  },
+  {
+    "name": "Bolt-Delivery 9.5 (Mainland Store)",
+    "id": "c29e26ca-cc96-4708-a1b6-1604b8d51ab5",
+    "price": 9500
+  },
+  {
+    "name": "Agungi Lekki (Surge)",
+    "id": "5b95ee0c-816d-423d-a730-504d2baa312d",
+    "price": 4000
+  },
+  {
+    "name": "Uber Delivery 8.5",
+    "id": "f1fa2a16-4a8b-4ae3-8dee-9de0a4e41e21",
+    "price": 8500
+  },
+  {
+    "name": "Ajuwon (Mainland Store)",
+    "id": "c5c82dee-6146-4516-9f7d-b787ff94db69",
+    "price": 7500
+  },
+  {
+    "name": "P-discount",
+    "id": "f90d229d-3e64-45c8-9155-d263d829e1ac",
+    "price": 6000
+  },
+  {
+    "name": "Ilasamaja Surge (Mainland Store)",
+    "id": "fe457d21-2152-406c-b837-997aaae83115",
+    "price": 5500
+  },
+  {
+    "name": "Lagos Island Uber Delivery ",
+    "id": "0c646abc-3bd8-48d7-bcca-2c40f442cd93",
+    "price": 9000
+  },
+  {
+    "name": "Alagba (Mainland Store)",
+    "id": "4ea6a04c-5c2e-41fc-883f-057fd96db61a",
+    "price": 6000
+  },
+  {
+    "name": "Dangote Refinery Eleko",
+    "id": "ce31a346-c384-4796-b7d5-c6ed5703cb03",
+    "price": 15000
+  },
+  {
+    "name": "Isolo Surge (Mainland Store)",
+    "id": "58e74c58-2692-4fe3-abe4-13334c38fc87",
+    "price": 6000
+  },
+  {
+    "name": "Akoka Surge (Mainland Store)",
+    "id": "59c472e9-04fd-415a-9670-023a81979276",
+    "price": 4500
+  },
+  {
+    "name": "Omole phase 2 (Mainland Store)",
+    "id": "c1e89a32-e90d-4717-b0a5-ff2e0609aa4e",
+    "price": 4500
+  },
+  {
+    "name": "Okota (Mainland Store)",
+    "id": "a425adb3-293d-417e-807d-b6c842526119",
+    "price": 5500
+  },
+  {
+    "name": "Bolt Delivery 4.5 (Mainland Store)",
+    "id": "77adb893-ff4d-4c97-96e1-963b61bdc3ad",
+    "price": 4500
+  },
+  {
+    "name": "OWODE - ONIRIN (Mainland Store)",
+    "id": "d5078825-6733-488d-92b8-c0760943eacb",
+    "price": 5000
+  },
+  {
+    "name": "Pick up LEKKI",
+    "id": "7ea1da57-376a-4b39-a0ff-b93f8f5884bf",
+    "price": 0
+  },
+  {
+    "name": "ALIMOSHO (Mainland Store)",
+    "id": "b7f44e81-a9ce-475d-aedb-f0ba9fcc9296",
+    "price": 6000
+  },
+  {
+    "name": "Uber delivery 11",
+    "id": "d19d6b99-d963-4c8c-a6c3-35f5a0a3ee23",
+    "price": 11000
+  },
+  {
+    "name": "Lekki Conservation",
+    "id": "cc6a4cdb-be09-467a-8464-dd4a1b9a62a6",
+    "price": 4000
+  },
+  {
+    "name": "Lekki - Ologolo ( Surge ) ",
+    "id": "08ac6ab1-d9e9-4beb-9cf4-a6dee53e1203",
+    "price": 3800
+  },
+  {
+    "name": "Lekki - Idado",
+    "id": "5f58af90-eeb5-49ba-b749-691215bfa9ac",
+    "price": 3500
+  },
+  {
+    "name": "Pan Atlantic University",
+    "id": "fbb1b128-c9ef-4b62-b2e1-e1444938f51e",
+    "price": 12000
+  },
+  {
+    "name": "Lekki - Freedom Way",
+    "id": "f8eb67d6-5b93-46dc-a891-04f483784695",
+    "price": 2500
+  },
+  {
+    "name": "LEKKI-OSAPA LONDON",
+    "id": "c91b26e1-2774-48dd-ba3e-1c102e3eb956",
+    "price": 3300
+  },
+  {
+    "name": "Lekki Conservation (Surge)",
+    "id": "fc2ba319-2616-4185-82e8-e40df75a03a6",
+    "price": 4500
+  },
+  {
+    "name": "Ajah - Thomas",
+    "id": "0ab4d802-2f7d-468e-9327-22f96d4ab8b3",
+    "price": 5000
+  },
+  {
+    "name": "Uber Delivery 6",
+    "id": "ff5fd784-1a26-4f30-b336-ce818cba305a",
+    "price": 6000
+  },
+  {
+    "name": "Ifako-Ijaiye-Ogba (Mainland Store)",
+    "id": "14e7aba1-bbd2-4a5b-92ca-e7bd1bacd221",
+    "price": 4500
+  },
+  {
+    "name": "Uber Delivery 4",
+    "id": "cfd4d83f-0cd7-4066-8e01-174bab6d1e27",
+    "price": 4000
+  },
+  {
+    "name": "Lekki Elf ( Surge )",
+    "id": "bad6f8eb-78a5-49b5-943c-9204135f79db",
+    "price": 3200
+  },
+  {
+    "name": "Ikota (Surge)",
+    "id": "ff99f376-910d-452f-9fb2-676147ebb5c2",
+    "price": 4500
+  },
+  {
+    "name": "Iyana-Ipaja (Mainland Store)",
+    "id": "42ca40a0-3105-4ca1-bdd2-b4f9b7690496",
+    "price": 5000
+  },
+  {
+    "name": "Magodo Phase 2 (Mainland Store)",
+    "id": "3c4f3d8c-b7fa-4d26-a88b-314b31eba4b0",
+    "price": 4500
+  },
+  {
+    "name": "Lekki Phase 1",
+    "id": "7bf20cf6-4ab7-4a35-9a0b-05c04384a9fb",
+    "price": 2500
+  },
+  {
+    "name": "Command (Mainland Store)",
+    "id": "c32df0d0-725d-4fb4-a34b-b8d8c76bf66b",
+    "price": 5000
+  },
+  {
+    "name": "Opic (Mainland Store)",
+    "id": "2a47f30f-d691-4d1a-98ae-63bd717c4bab",
+    "price": 7000
+  },
+  {
+    "name": "Isheri-North (Mainland Store)",
+    "id": "f54066d2-d14a-42fe-b31d-19ae719e8c5b",
+    "price": 6500
+  },
+  {
+    "name": "Lekki-Awoyaya",
+    "id": "f5fb5b46-2041-4eca-9a17-83b081489b8b",
+    "price": 7500
+  },
+  {
+    "name": "Abijo-Sangotedo",
+    "id": "2404167f-1150-4031-ac1b-f56de6a5f966",
+    "price": 6500
+  },
+  {
+    "name": "Ilasa (Mainland Store)",
+    "id": "ffd06d91-a47e-49f3-8d34-1515154f76c7",
+    "price": 4500
+  },
+  {
+    "name": "Costain (Mainland Store)",
+    "id": "f5a43bbb-0dab-4a02-8053-ce12d6dcd9c4",
+    "price": 4000
+  },
+  {
+    "name": "Arepo (Mainland Store)",
+    "id": "cabb7e10-c55a-4f98-a4b2-ec17f3a590e6",
+    "price": 8000
+  },
+  {
+    "name": "Ago (Mainland Store)",
+    "id": "3f960862-ce46-4e35-a1f0-52a64915c893",
+    "price": 5500
+  },
+  {
+    "name": "Tradefair  (Surge)",
+    "id": "c1d37101-6f8e-4ac0-9321-58086eaef143",
+    "price": 11000
+  },
+  {
+    "name": "Victoria Island ",
+    "id": "54c06455-2438-4bed-b0a1-7e75a968353e",
+    "price": 3500
+  },
+  {
+    "name": "Lekki - Ilasan ( Surge )",
+    "id": "058e73b8-d30a-422a-8cf4-56b3ebb09895",
+    "price": 3500
+  },
+  {
+    "name": "Lagos Island ( Surge ) ",
+    "id": "180f7220-568b-4355-a562-9fb95aa9ae26",
+    "price": 5000
+  },
+  {
+    "name": "Sangotedo ( Surge )",
+    "id": "843df107-79e7-4774-9ab5-0c617fdb3271",
+    "price": 6500
+  },
+  {
+    "name": "Obalende.",
+    "id": "5e4e5620-5395-4f27-b82b-fcf67cfdc48b",
+    "price": 4000
+  },
+  {
+    "name": "Uber Delivery 7",
+    "id": "f3c94153-5782-401b-a3a4-4ca4fbbbd822",
+    "price": 7000
+  },
+  {
+    "name": "Dopemu (Mainland Store)",
+    "id": "644b502f-3a85-42cf-a86d-2e67a61ef1d5",
+    "price": 4000
+  },
+  {
+    "name": "Mile 2 (Mainland Store)",
+    "id": "3554c7e0-c689-46e5-a2d3-80122b249742",
+    "price": 5000
+  },
+  {
+    "name": "LEKKI-ONIRU ESTATE",
+    "id": "efbf0479-4fbf-4cd9-8084-1b478bcf45cd",
+    "price": 3500
+  },
+  {
+    "name": "Iganmu (Mainland Store)",
+    "id": "d6b88ef2-9cf0-43d8-ac6b-d0b59a88ff26",
+    "price": 4500
+  },
+  {
+    "name": "Iju Ishaga (Opebi Store)",
+    "id": "396263f4-a1e9-44d0-9945-a8e62a005bd6",
+    "price": 4500
+  },
+  {
+    "name": "Ejigbo (Mainland Store)",
+    "id": "64f6128f-0bb2-4e25-acee-2dfaa2674781",
+    "price": 6000
+  },
+  {
+    "name": "Uber Delivery 7.5",
+    "id": "507cde43-d57f-437b-9397-86e263f37aa9",
+    "price": 7500
+  },
+  {
+    "name": "Akowonjo (Mainland Store)",
+    "id": "ba632480-4bb9-44e5-a118-7a3b87141c44",
+    "price": 5000
+  },
+  {
+    "name": "Allen (Mainland Store)",
+    "id": "7876dd94-197e-400c-9018-b237db2582a0",
+    "price": 2500
+  },
+  {
+    "name": "Berger (Mainland Store)",
+    "id": "a6248ac3-7549-487b-8f52-ec13afffb054",
+    "price": 4500
+  },
+  {
+    "name": "Ogba (Mainland Store)",
+    "id": "a34862e5-c2f4-44ae-b656-861556e72f89",
+    "price": 3000
+  },
+  {
+    "name": "Ikeja (Mainland Store)",
+    "id": "3bd8bea2-36f9-4b2a-87d5-8ed5613462c8",
+    "price": 3000
+  },
+  {
+    "name": "Opebi ( Mainland Store)",
+    "id": "0ffff8de-0cfd-4999-b63c-6d0100047fd4",
+    "price": 2500
+  },
+  {
+    "name": "Palmgroove (Mainland Store)",
+    "id": "f0c440ae-869a-43e7-8cba-f7a35a5d7422",
+    "price": 4000
+  },
+  {
+    "name": "Gbagada ( Mainland Store)",
+    "id": "006bbf85-a73b-4e68-918f-a7d32d94bc85",
+    "price": 3500
+  },
+  {
+    "name": "Lekki - Freedom Way ( Surge )",
+    "id": "42e502b3-b1fc-4870-9db6-f02b891172dc",
+    "price": 3000
+  },
+  {
+    "name": "Ikeja Gra (Mainland Store)",
+    "id": "31e8870e-a56a-4de0-848a-9622fd2ef74c",
+    "price": 3000
+  },
+  {
+    "name": "Toyin & Ayomire (Mainland Store)",
+    "id": "a46d7d62-ec78-4b6d-b008-90b5294837f6",
+    "price": 2500
+  },
+  {
+    "name": "Lekki -Orchid ( Surge )",
+    "id": "bc53bff5-76e0-44e9-87ba-ff90c247282b",
+    "price": 4500
+  },
+  {
+    "name": "Iju Ishaga (Mainland Store)",
+    "id": "5fcd8d93-13b9-4801-848d-80850e047e0b",
+    "price": 4500
+  },
+  {
+    "name": "Airport (Mainland Store)",
+    "id": "d27f80b8-ef5c-4782-aa83-66fd2e49cf5b",
+    "price": 3000
+  },
+  {
+    "name": "Lekki - Salem ( Surge )",
+    "id": "64cf94b2-0531-4af2-a22a-e23689fefb1b",
+    "price": 3500
+  },
+  {
+    "name": "Eleganza",
+    "id": "da6a2ea3-4df8-48d8-8e89-a200f3a37df4",
+    "price": 4000
+  },
+  {
+    "name": "Bolt Delivery 7 (Mainland Store)",
+    "id": "6cbf29f4-92e0-44b1-83ed-c1f15abeaca5",
+    "price": 7000
+  },
+  {
+    "name": "Ajao Estate (Mainland Store)",
+    "id": "261862bb-a1a3-4c38-9f46-34acf09f7b7f",
+    "price": 3500
+  },
+  {
+    "name": "Obawole (Mainland Store)",
+    "id": "8f65387f-8bfc-43c6-b815-4239f59d5d8c",
+    "price": 4500
+  },
+  {
+    "name": "Uber Delivery 10.5",
+    "id": "ac5229fb-2452-4fbf-9531-da6010911d98",
+    "price": 10500
+  },
+  {
+    "name": "Okeira (Mainland Store)",
+    "id": "143fc1a9-8f2b-45a2-b74f-3c2f211c6805",
+    "price": 3500
+  },
+  {
+    "name": "Ipaja-Ayobo (Mainland Store)",
+    "id": "455ad7f9-03c3-483b-9fe9-bacba8bb47be",
+    "price": 7500
+  },
+  {
+    "name": "Ayobo (Mainland Store)",
+    "id": "cabae8df-cd2d-4890-8fd3-e0b6fc2e2e87",
+    "price": 7500
+  },
+  {
+    "name": "LEKKI-JAKANDE (KAZEEM ELETU)",
+    "id": "caf01b2e-0251-4300-9492-f3e27a558afd",
+    "price": 3300
+  },
+  {
+    "name": "Magodo (Mainland Store)",
+    "id": "bcec988a-a186-4154-9212-9a31c131217b",
+    "price": 4000
+  },
+  {
+    "name": "Omole Phase 1 (Mainland Store)",
+    "id": "26068546-ed37-4f0e-a4d7-52e604d9f857",
+    "price": 3000
+  },
+  {
+    "name": "Orile (Mainland Store)",
+    "id": "c2fd1b55-dc77-4779-83fe-13345f814219",
+    "price": 5500
+  },
+  {
+    "name": "Victoria Island Surge",
+    "id": "0768263f-62dc-4708-9783-172ae20ec53d",
+    "price": 4500
+  },
+  {
+    "name": "Ogba-Obawole (Mainland Store)",
+    "id": "b69b47f1-1e46-44cf-a292-4713a3198040",
+    "price": 4000
+  },
+  {
+    "name": "Fagba (Mainland Store)",
+    "id": "0d1ac3ce-59b2-48c0-9dca-40b0b2d9c1b4",
+    "price": 4500
+  },
+  {
+    "name": "Lekki - Igboefon",
+    "id": "62c3dd11-73c0-4201-bb57-615ca12d10f7",
+    "price": 3500
+  },
+  {
+    "name": "Bolt Delivery 8 (Mainland Store)",
+    "id": "117b68dd-5110-4147-8ee3-4e3f89303859",
+    "price": 8000
+  },
+  {
+    "name": "Ajah -- Badore ",
+    "id": "3e9311d9-6e9a-40da-9680-56e16aef276b",
+    "price": 5500
+  },
+  {
+    "name": "Mosan (Mainland Store)",
+    "id": "d706b981-001a-4af0-86df-995008508ede",
+    "price": 5000
+  },
+  {
+    "name": "Lasu (Mainland Store)",
+    "id": "e63aa78d-3ba5-4cf0-a808-59339288df4d",
+    "price": 7500
+  },
+  {
+    "name": "Alaba Int Market (Mainland Store)",
+    "id": "25743894-aea1-4957-b523-43f486d8461c",
+    "price": 10000
+  },
+  {
+    "name": "Agege (Mainland Store)",
+    "id": "33505ac1-b1c0-4105-b658-1f308576ddc0",
+    "price": 3500
+  },
+  {
+    "name": "Anthony Village (Mainland Store)",
+    "id": "dd46cab8-30e7-4a8a-86ee-512c4361cd90",
+    "price": 3500
+  },
+  {
+    "name": "Alakuko (Mainland Store)",
+    "id": "635fac4d-c743-4dd0-a321-1c763041be4e",
+    "price": 6000
+  },
+  {
+    "name": "Ajah - Thomas Estate ( Surge )",
+    "id": "e7571a47-44ff-40fd-aaad-4d3c16f5bd57",
+    "price": 5500
+  },
+  {
+    "name": "Chevron ( Surge )",
+    "id": "19c9a2b3-9277-4329-a804-52b9290bf5ef",
+    "price": 4000
+  },
+  {
+    "name": "Festac (Lekki Processing)",
+    "id": "1a55f62b-63b3-44e9-b1c4-0c6305311e01",
+    "price": 7000
+  },
+  {
+    "name": "Ipaja (Mainland Store)",
+    "id": "435b16c5-a258-438e-bfb1-10fbeb5ae288",
+    "price": 5000
+  },
+  {
+    "name": "Ikotun (Mainland Store)",
+    "id": "52775d5a-2714-4bdc-ad15-acc98a6130d6",
+    "price": 6500
+  },
+  {
+    "name": "Ikoyi Surge ",
+    "id": "a6d2960e-2f96-4c35-aa25-6decff7473f9",
+    "price": 4000
+  },
+  {
+    "name": "Meiran (Mainland Store)",
+    "id": "d60e9a67-3acf-42df-b95d-c0bc81de40f5",
+    "price": 5000
+  },
+  {
+    "name": "Gowon Estate (Mainland Store)",
+    "id": "6f394dc8-3b90-4f02-a2d5-b33af2384711",
+    "price": 5500
+  },
+  {
+    "name": "Kola (Mainland Store)",
+    "id": "132de70b-1791-4711-acc7-c683e281427b",
+    "price": 6000
+  },
+  {
+    "name": "Egbeda (Mainland Store)",
+    "id": "e1dcdbd0-69c4-42f5-b34a-a3113576f5f1",
+    "price": 5500
+  },
+  {
+    "name": "Bolt Delivery 6 (Mainland Store) ",
+    "id": "0de80f1d-da30-40c8-bd6f-dab9decb48ab",
+    "price": 6000
+  },
+  {
+    "name": "Uber Delivery 6.5",
+    "id": "f980b30e-3410-4323-9660-cb2cc5b65b0b",
+    "price": 6500
+  },
+  {
+    "name": "Gbagada Surge (Mainland Store)",
+    "id": "5283e7d2-3f66-43a2-89aa-8567d3ddf3fe",
+    "price": 4000
+  },
+  {
+    "name": "Ojodu Berger (Mainland Store)",
+    "id": "d7a98355-1d58-4cff-819e-42a1dfbb9845",
+    "price": 3500
+  },
+  {
+    "name": "Ikorodu (Mainland Store)",
+    "id": "21086f84-7b47-4115-bcec-84a70239f040",
+    "price": 7000
+  },
+  {
+    "name": "Uber Delivery 5",
+    "id": "91061c7e-90c6-47f1-9ed6-de33d50dc70c",
+    "price": 5000
+  },
+  {
+    "name": "Ilupeju (Mainland Store)",
+    "id": "9cf97b97-d2b2-43e2-8670-303dea4d0133",
+    "price": 3500
+  },
+  {
+    "name": "Pick Up OPEBI",
+    "id": "2d4a8917-3408-4e25-9f6f-aad87a4087bd",
+    "price": 0
+  },
+  {
+    "name": "Mile 12 (Mainland Store)",
+    "id": "50b7812a-e900-417e-b0ee-f55c708ea6a3",
+    "price": 4000
+  },
+  {
+    "name": "Idimu (Mainland Store)",
+    "id": "59185d99-2822-44e2-b7ff-30147520c363",
+    "price": 5500
+  },
+  {
+    "name": "Surulere (Mainland Store)",
+    "id": "fc9270fe-a367-4307-b8ab-72ec2fe41ba5",
+    "price": 4000
+  },
+  {
+    "name": "Apapa (Mainland Store)",
+    "id": "c7ec3237-cdb1-49e8-9eb2-25ef711c6020",
+    "price": 5000
+  },
+  {
+    "name": "Ebutte-Meta (Mainland Store)",
+    "id": "79e94024-f109-4885-abb9-641b5201a715",
+    "price": 4000
+  },
+  {
+    "name": "Fadeyi (Mainland Store)",
+    "id": "0fb5b0e7-9872-4b4f-86da-72433a609f2d",
+    "price": 4000
+  },
+  {
+    "name": "Oshodi (Mainland Store)",
+    "id": "64e73a56-7ca6-466a-a8e1-9d7c64ff762c",
+    "price": 3500
+  },
+  {
+    "name": "Obanikoro (Mainland Store)",
+    "id": "b3c6ddec-64d2-4c93-8cdf-99219f94bfea",
+    "price": 3500
+  },
+  {
+    "name": "Gbagada (Mainland Store)",
+    "id": "79c94848-354f-46ac-a4b6-006276d5b9c7",
+    "price": 3500
+  },
+  {
+    "name": "Abule Ado (Mainland Store)",
+    "id": "abc194f6-b91c-4d5c-8f4b-42e1c71682f4",
+    "price": 6000
+  },
+  {
+    "name": "Onipanu (Mainland Store)",
+    "id": "2a7c0a65-aa2f-4bc4-9b1b-68326b0289af",
+    "price": 4500
+  },
+  {
+    "name": "Ketu (Mainland Store)",
+    "id": "b161e54b-ac1d-450d-993b-6138b8678a62",
+    "price": 4000
+  },
+  {
+    "name": "LAKOWE",
+    "id": "d3398629-01d2-4425-b6d0-c722c64d1008",
+    "price": 8500
+  },
+  {
+    "name": "Ojuelegba (Mainland Store)",
+    "id": "f36a3082-2008-43bb-b529-beb6ed8b5aec",
+    "price": 4000
+  },
+  {
+    "name": "Ojota (Mainland Store)",
+    "id": "58a6aa5f-2e2d-4042-8249-effb4e297002",
+    "price": 3500
+  },
+  {
+    "name": "Ijegun (Mainland Store)",
+    "id": "c29f8eca-3082-4e8d-a99c-10dcc5fe61d5",
+    "price": 7000
+  },
+  {
+    "name": "Shomolu (Mainland Store)",
+    "id": "8974514d-acf8-4fa1-b59c-96d3414d503b",
+    "price": 4000
+  },
+  {
+    "name": "Owode-Onirin (Mainland Store)",
+    "id": "ed9752de-e355-4c23-bc68-79229cb23d0c",
+    "price": 4500
+  },
+  {
+    "name": "Shibiri (Mainland Store)",
+    "id": "c1e989ed-df7e-439e-8248-9e0f0906bce0",
+    "price": 10000
+  },
+  {
+    "name": "Festac (Mainland Store)",
+    "id": "fed06972-c078-406d-a203-f00783860e05",
+    "price": 5500
+  },
+  {
+    "name": "Alakija (Mainland Store)",
+    "id": "f0fcb53c-15db-4e3e-93df-b51b305e5388",
+    "price": 6000
+  },
+  {
+    "name": "SHOMOLU (Mainland Store)",
+    "id": "7412a8cd-7ce9-4381-9d3e-32a3c7795fea",
+    "price": 4000
+  },
+  {
+    "name": "Maryland (Mainland Store)",
+    "id": "6f68fde9-ea12-4c1b-9295-6660231fff3a",
+    "price": 3000
+  },
+  {
+    "name": "Ogudu (Mainland Store)",
+    "id": "b391997f-af7f-4d56-b0f7-e8a1b3469406",
+    "price": 3500
+  },
+  {
+    "name": "Satelite Town (Mainland Store)",
+    "id": "e268640f-e806-4661-a4b1-921abfe5c5fd",
+    "price": 6000
+  },
+  {
+    "name": "Old Ojo Road (Mainland Store)",
+    "id": "9ef4b887-2739-4d0b-ba60-475d140cab46",
+    "price": 7000
+  },
+  {
+    "name": "Onipan (Mainland Store)",
+    "id": "feaccb22-872e-4b78-9714-f069d425c021",
+    "price": 4000
+  },
+  {
+    "name": "Okoko (Mainland Store)",
+    "id": "f08e3b52-23cf-4442-911e-9f8b98f48875",
+    "price": 10000
+  },
+  {
+    "name": "Lekki Chisco (Surge)",
+    "id": "f66daf6e-4c5a-490b-b116-5ba9c5f53dd6",
+    "price": 3500
+  },
+  {
+    "name": "Lekki Jakande (Surge)",
+    "id": "b6dd3125-a1d5-48d3-9b3c-1c36ccb10538",
+    "price": 4200
+  },
+  {
+    "name": "Lekki Osapa London (Surge)",
+    "id": "7a7c3cdc-176a-4704-84e0-870e98177779",
+    "price": 3800
+  },
+  {
+    "name": "Lekki Maruwa (Surge)",
+    "id": "3f35e890-f26f-4cb6-83f8-a48e9a5c2561",
+    "price": 3000
+  },
+  {
+    "name": "Lekki VGC (Surge)",
+    "id": "e8f06116-fe5e-4eb3-8ee8-971f54874c6b",
+    "price": 5500
+  },
+  {
+    "name": "Awoyaya (Surge)",
+    "id": "b0c4b896-0bcd-4ac2-8c84-1d0535181fbd",
+    "price": 8500
+  },
+  {
+    "name": "Lagos Island (Surge)",
+    "id": "6312cfdf-c19b-4173-ad8d-b5636d0b4d9d",
+    "price": 5500
+  },
+  {
+    "name": "Yaba Glovo Lekki",
+    "id": "87d51217-d7bf-4255-a5de-6e3be3d09038",
+    "price": 5000
+  },
+  {
+    "name": "Lekki Phase 1 (Surge)",
+    "id": "e18c1661-2b12-4f6a-9f18-81bb92954b73",
+    "price": 3000
+  },
+  {
+    "name": "Lekki - Ikate Elegushi (Surge)",
+    "id": "6f909735-d494-4df2-99b7-715a265aac1f",
+    "price": 3500
+  },
+  {
+    "name": "Lekki Oniru Estate (Surge)",
+    "id": "07a04025-c774-445e-b946-5967b08b73a2",
+    "price": 4000
+  },
+  {
+    "name": "Jakande (Surge)",
+    "id": "b3cca9ad-1f32-49aa-9eac-2329ea9b7f90",
+    "price": 4200
+  },
+  {
+    "name": "Lakowe (Surge)",
+    "id": "2d1802e7-f2c9-4c8f-93ba-b4562c91f122",
+    "price": 12000
+  },
+  {
+    "name": "Alpha Beach (Surge)",
+    "id": "381bde9e-91cb-45b5-8968-e9ea20b517ae",
+    "price": 4500
+  },
+  {
+    "name": "Lekki Ajah Surge",
+    "id": "6b5b7afe-351c-4475-9dfd-8e8e3a7a8231",
+    "price": 5500
+  },
+  {
+    "name": "Ikoyi (Surge)",
+    "id": "190e12b6-b483-4dc2-b8d6-449e6234dc5b",
+    "price": 4500
+  },
+  {
+    "name": "Ipaja (Mainland Store.)",
+    "id": "e66f6acf-e0cd-4daa-ac9d-d2f83f1918c8",
+    "price": 6500
+  },
+  {
+    "name": "Victoria/Oniru Surge",
+    "id": "c0c9aa36-ed34-4547-82c9-f2ce6e2eefaf",
+    "price": 5000
+  },
+  {
+    "name": "Amuwo (Mainland Store)",
+    "id": "259b6929-94ea-4a49-b374-c3d996e67a91",
+    "price": 5500
+  },
+  {
+    "name": "Oregun (Mainland Store)",
+    "id": "1ba4d9cb-dfb6-42dd-a231-a8cf53e70165",
+    "price": 3000
+  },
+  {
+    "name": "Akoka (Mainland Store)",
+    "id": "bd06b24a-9cc6-4601-b8cb-22fb6a7ce716",
+    "price": 4000
+  },
+  {
+    "name": "Uber Delivery 4.5",
+    "id": "d47d0397-1209-4260-876e-dc2de23f14d1",
+    "price": 4500
+  },
+  {
+    "name": "Lekki-Jakande",
+    "id": "bb290cbe-951e-498f-80c0-58953834be41",
+    "price": 3300
+  },
+  {
+    "name": "Bolt Delivery 5(Mainland Store)",
+    "id": "b3f41ebb-1ce8-4b02-9624-71a967f4ea2b",
+    "price": 5000
+  },
+  {
+    "name": "Bolt Delivery 8.5 (Mainland Store)",
+    "id": "b679ddcb-ae96-4649-ad67-dd72c9631a25",
+    "price": 8500
+  },
+  {
+    "name": "Bolt Delivery 10 (Mainland Store)",
+    "id": "7617a65d-6491-4e07-991a-20ec01442ff6",
+    "price": 10000
+  },
+  {
+    "name": "Isheri Magodo (Mainland Store)",
+    "id": "7dddce7e-f3eb-4c81-9b85-885a77ae3c7a",
+    "price": 4500
+  },
+  {
+    "name": "Abule-Egba (Mainland Store)",
+    "id": "77075353-3194-4e32-a911-259b29e8718b",
+    "price": 5500
+  },
+  {
+    "name": "Agbado (Mainland Store)",
+    "id": "39e2de87-ec85-4b79-8403-ac05f0737076",
+    "price": 8000
+  },
+  {
+    "name": "Yaba (Mainland Store)",
+    "id": "6a3ea9c0-c3b1-4f4c-9b59-14581a2e1970",
+    "price": 4000
+  },
+  {
+    "name": "Ketu - Lekki Delivery",
+    "id": "6062e127-70d1-4a63-b777-7c8d4c9b1516",
+    "price": 7500
+  },
+  {
+    "name": "Imota (Mainland Store)",
+    "id": "83eb9925-8013-466e-8901-33b3e42f70ef",
+    "price": 10000
+  },
+  {
+    "name": "Uber Delivery 5.5",
+    "id": "c57b419b-d04d-4e73-9ff2-bb92e058a370",
+    "price": 5500
+  },
+  {
+    "name": "Olowora (Mainland Store)",
+    "id": "470cca55-00ea-4b27-8488-9f654f81ef5a",
+    "price": 4000
+  },
+  {
+    "name": "Uber Delivery 9.5",
+    "id": "e288e7ae-7055-4a2f-bc1e-5274f8f772b4",
+    "price": 9500
+  },
+  {
+    "name": "Alagbado (Mainland Store)",
+    "id": "a498527c-e1dd-408b-a632-9fb9e7178227",
+    "price": 7000
+  },
+  {
+    "name": "Alausa (Mainland Store)",
+    "id": "a3da0450-5f57-4f50-8ece-b928ee60f00a",
+    "price": 2500
+  },
+  {
+    "name": "Ijaiye (Mainland Store)",
+    "id": "9ce2b3d4-08b3-4204-bb25-f41a3dd9eb6e",
+    "price": 6500
+  },
+  {
+    "name": "Ifako-Ijaiye - Toll Gate (Mainland Store)",
+    "id": "8ab9f172-1ba3-45de-af38-0f7fd5123b78",
+    "price": 6000
+  },
+  {
+    "name": "Mushin (Mainland Store)",
+    "id": "d5d912fa-79ed-4827-9208-b530728f788a",
+    "price": 4000
+  },
+  {
+    "name": "Bariga (Mainland Store)",
+    "id": "b83fd30e-6648-43d8-89af-715cf2f79f6d",
+    "price": 4000
+  },
+  {
+    "name": "Iyana Isashi (Mainland Store)",
+    "id": "ad312e3c-1971-4b4e-b83a-38f80a55505e",
+    "price": 9000
+  },
+  {
+    "name": "Uber Delivery 13",
+    "id": "d489b177-9f08-499d-97a6-7ba40714d841",
+    "price": 13000
+  },
+  {
+    "name": "Bolt Delivery 13 (Mainland Store)",
+    "id": "e820c698-074d-4913-80b2-33237d8998fa",
+    "price": 13000
+  },
+  {
+    "name": "Bolt Delivery 9(Mainland Store) ",
+    "id": "fc52774e-bc41-4de1-9afe-e75ca7c26397",
+    "price": 9000
+  },
+  {
+    "name": "Shasha (Mainland Store)",
+    "id": "546767a0-7f38-4c12-b24e-2100d0c64425",
+    "price": 5500
+  },
+  {
+    "name": "Egbeda Surge (Mainland Store)",
+    "id": "28c789d7-f471-453a-9ab0-a3cfaa101968",
+    "price": 6500
+  },
+  {
+    "name": "Idumota",
+    "id": "7beff5b5-b526-4f7c-9bcb-770b5616ec8f",
+    "price": 5000
+  },
+  {
+    "name": "Bolt Delivery 5.5(Mainland Store)",
+    "id": "930c2188-1d42-443f-a0ea-a0e19480558f",
+    "price": 5500
+  },
+  {
+    "name": "Bolt Delivery 7.5 (Mainland Store)",
+    "id": "70478d90-b1a7-4441-b338-b72297deb02a",
+    "price": 7500
+  },
+  {
+    "name": "Akute (Mainland Store)",
+    "id": "5282325e-61fd-42d1-ab6b-21eb69be2340",
+    "price": 7000
+  },
+  {
+    "name": "Maryland Surge (Mainland Store)",
+    "id": "cc1f36bb-1830-4f03-8dbe-825e5a400236",
+    "price": 4000
+  },
+  {
+    "name": "Ajah - Abraham Adesanya",
+    "id": "27497f9e-6aa0-4947-b8a7-ef595ede7fa3",
+    "price": 5500
+  },
+  {
+    "name": "Abraham Adesanya ajah ( SURGE )",
+    "id": "6a3331e9-09ae-471c-9dc5-b5e73a65c6a1",
+    "price": 6000
+  },
+  {
+    "name": "Ikorodu - Surge (Mainland Store) ",
+    "id": "7f71eef0-f7cd-45cb-a9fe-c160885ce063",
+    "price": 9000
+  },
+  {
+    "name": "Isheri-Osun (Mainland Store)",
+    "id": "a6da2cfc-6eda-406d-a694-13e0a8427cc4",
+    "price": 7000
+  },
+  {
+    "name": "Ikeja Surge (Mainland Store)",
+    "id": "93d6dafe-1ec1-40cc-8d0e-c42b21dd8c84",
+    "price": 4000
+  },
+  {
+    "name": "Bolt Delivery 14.5",
+    "id": "0ad7e396-e20e-4bdc-9613-4768a1f502a0",
+    "price": 14500
+  },
+  {
+    "name": "Aboru (Mainland Store)",
+    "id": "b12ab0fe-2020-4cab-9802-b2598e3442be",
+    "price": 7000
+  },
+  {
+    "name": "Cele-Egbe (Mainland Store)",
+    "id": "962a4fec-217a-48bd-912d-d65f4ec12ebb",
+    "price": 5500
+  },
+  {
+    "name": "Uber Delivery 15",
+    "id": "03e9338c-a26d-4611-97e6-883c94d68451",
+    "price": 15000
+  },
+  {
+    "name": "Ikorodu Surge (Mainland Store)",
+    "id": "aaf0b53b-5cb0-4bb6-b059-b29964056ed6",
+    "price": 8000
+  },
+  {
+    "name": "Alagbole (Mainland Store)",
+    "id": "63b2d122-d72e-4e4d-b993-6cdda843c1ae",
+    "price": 7500
+  },
+  {
+    "name": "Abule-Egba Surge (Mainland Store)",
+    "id": "40cec692-cf05-406d-a64b-5326959ced94",
+    "price": 6000
+  },
+  {
+    "name": "Ikate Coatal Road Surge ",
+    "id": "b985b97e-d916-4f1d-ba76-514b1465ec47",
+    "price": 4000
+  },
+  {
+    "name": "Bariga Lekki Delivery",
+    "id": "c35abe81-3cc3-4547-ad81-a2fa216efcbb",
+    "price": 7000
+  },
+  {
+    "name": "Ikola Ipaja (Mainland Store)",
+    "id": "d2cf61aa-35a3-4b3b-a0da-da80a08ada34",
+    "price": 8500
+  },
+  {
+    "name": "Eputu ",
+    "id": "a5f4a482-c2f6-4fc8-a39a-78a3974fcf04",
+    "price": 8000
+  },
+  {
+    "name": "Yaba Lekki Delivery",
+    "id": "e5facb77-0d21-427a-8370-7189ec39b34e",
+    "price": 6500
+  },
+  {
+    "name": "Okun-Ajah",
+    "id": "cf821d52-3f3e-4476-94f6-3dd9735465d4",
+    "price": 6000
+  }
+]

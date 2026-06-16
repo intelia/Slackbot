@@ -1,0 +1,157 @@
+{
+  "ALAPERE": {
+    "zoneId": "b161e54b-ac1d-450d-993b-6138b8678a62",
+    "zoneName": "Ketu (Mainland Store)",
+    "branch": "Mainland"
+  },
+  "MILE 12": {
+    "zoneId": "b161e54b-ac1d-450d-993b-6138b8678a62",
+    "zoneName": "Ketu (Mainland Store)",
+    "branch": "Mainland"
+  },
+  "MILE12": {
+    "zoneId": "b161e54b-ac1d-450d-993b-6138b8678a62",
+    "zoneName": "Ketu (Mainland Store)",
+    "branch": "Mainland"
+  },
+  "OLOGOLO": {
+    "zoneId": "b12e8159-90a3-4c15-af96-29ac0aa14955",
+    "zoneName": "Lekki - Ologolo Spg",
+    "branch": "Lekki"
+  },
+  "SPG": {
+    "zoneId": "b12e8159-90a3-4c15-af96-29ac0aa14955",
+    "zoneName": "Lekki - Ologolo Spg",
+    "branch": "Lekki"
+  },
+  "VGC": {
+    "zoneId": "675cfe9d-f9f7-454d-9833-89cfe40d4c8f",
+    "zoneName": "LEKKI -VGC",
+    "branch": "Lekki"
+  },
+  "VICTORIA GARDEN CITY": {
+    "zoneId": "675cfe9d-f9f7-454d-9833-89cfe40d4c8f",
+    "zoneName": "LEKKI -VGC",
+    "branch": "Lekki"
+  },
+  "THOMAS ESTATE": {
+    "zoneId": "0ab4d802-2f7d-468e-9327-22f96d4ab8b3",
+    "zoneName": "Ajah - Thomas",
+    "branch": "Lekki"
+  },
+  "LANGBASA": {
+    "zoneId": "f5936103-53ac-415c-84c9-ec03d7793686",
+    "zoneName": "Ajah - Langbasa",
+    "branch": "Lekki"
+  },
+  "ILAJE AJAH": {
+    "zoneId": "ce8237e2-85d5-4a2a-84c0-496afafa5496",
+    "zoneName": "Ajah - Ilaje",
+    "branch": "Lekki"
+  },
+  "OGOMBO": {
+    "zoneId": "643bfda5-d096-485d-8a35-1ab57ae10281",
+    "zoneName": "Ajah  - Ogombo",
+    "branch": "Lekki"
+  },
+  "ABRAHAM ADESANYA": {
+    "zoneId": "27497f9e-6aa0-4947-b8a7-ef595ede7fa3",
+    "zoneName": "Ajah - Abraham Adesanya",
+    "branch": "Lekki"
+  },
+  "VI": {
+    "zoneId": "54c06455-2438-4bed-b0a1-7e75a968353e",
+    "zoneName": "Victoria Island",
+    "branch": "Lekki"
+  },
+  "VICTORIA ISLAND": {
+    "zoneId": "54c06455-2438-4bed-b0a1-7e75a968353e",
+    "zoneName": "Victoria Island",
+    "branch": "Lekki"
+  },
+  "ONIRU": {
+    "zoneId": "efbf0479-4fbf-4cd9-8084-1b478bcf45cd",
+    "zoneName": "LEKKI-ONIRU ESTATE",
+    "branch": "Lekki"
+  },
+  "FREEDOM WAY": {
+    "zoneId": "f8eb67d6-5b93-46dc-a891-04f483784695",
+    "zoneName": "Lekki - Freedom Way",
+    "branch": "Lekki"
+  },
+  "ADMIRALTY WAY": {
+    "zoneId": "f8eb67d6-5b93-46dc-a891-04f483784695",
+    "zoneName": "Lekki - Freedom Way",
+    "branch": "Lekki"
+  },
+  "PHASE 1": {
+    "zoneId": "7bf20cf6-4ab7-4a35-9a0b-05c04384a9fb",
+    "zoneName": "Lekki Phase 1",
+    "branch": "Lekki"
+  },
+  "LEKKI PHASE 1": {
+    "zoneId": "7bf20cf6-4ab7-4a35-9a0b-05c04384a9fb",
+    "zoneName": "Lekki Phase 1",
+    "branch": "Lekki"
+  },
+  "CHEVRON": {
+    "zoneId": "eb3ab97e-4475-41d0-a3be-4fd56d107c5d",
+    "zoneName": "Lekki - Chevron",
+    "branch": "Lekki"
+  },
+  "CHEVRON DRIVE": {
+    "zoneId": "eb3ab97e-4475-41d0-a3be-4fd56d107c5d",
+    "zoneName": "Lekki - Chevron",
+    "branch": "Lekki"
+  },
+  "OSAPA": {
+    "zoneId": "c91b26e1-2774-48dd-ba3e-1c102e3eb956",
+    "zoneName": "LEKKI-OSAPA LONDON",
+    "branch": "Lekki"
+  },
+  "OSAPA LONDON": {
+    "zoneId": "c91b26e1-2774-48dd-ba3e-1c102e3eb956",
+    "zoneName": "LEKKI-OSAPA LONDON",
+    "branch": "Lekki"
+  },
+  "SANGOTEDO": {
+    "zoneId": "aa561227-dcb4-40e4-a66d-3e711c375dcb",
+    "zoneName": "Ajah - Sangotedo",
+    "branch": "Lekki"
+  },
+  "GBAGADA": {
+    "zoneId": "79c94848-354f-46ac-a4b6-006276d5b9c7",
+    "zoneName": "Gbagada (Mainland Store)",
+    "branch": "Mainland"
+  },
+  "IKEJA": {
+    "zoneId": "3bd8bea2-36f9-4b2a-87d5-8ed5613462c8",
+    "zoneName": "Ikeja (Mainland Store)",
+    "branch": "Mainland"
+  },
+  "GRA IKEJA": {
+    "zoneId": "31e8870e-a56a-4de0-848a-9622fd2ef74c",
+    "zoneName": "Ikeja Gra (Mainland Store)",
+    "branch": "Mainland"
+  },
+  "IKEJA GRA": {
+    "zoneId": "31e8870e-a56a-4de0-848a-9622fd2ef74c",
+    "zoneName": "Ikeja Gra (Mainland Store)",
+    "branch": "Mainland"
+  },
+  "OPEBI": {
+    "zoneId": "0ffff8de-0cfd-4999-b63c-6d0100047fd4",
+    "zoneName": "Opebi ( Mainland Store)",
+    "branch": "Mainland"
+  },
+  "MARYLAND": {
+    "zoneId": "6f68fde9-ea12-4c1b-9295-6660231fff3a",
+    "zoneName": "Maryland (Mainland Store)",
+    "branch": "Mainland"
+  },
+  "YABA": {
+    "zoneId": "6a3ea9c0-c3b1-4f4c-9b59-14581a2e1970",
+    "zoneName": "Yaba (Mainland Store)",
+    "branch": "Mainland"
+  }
+}
