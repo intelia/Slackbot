@@ -42,6 +42,7 @@ function createApp() {
 
   // Order lifecycle
   app.action('confirm_order', handlers.handleConfirmOrder);
+  app.action('override_duplicate', handlers.handleOverrideDuplicate);
   app.action('reject_order', handlers.handleRejectOrder);
 
   return app;

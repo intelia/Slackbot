@@ -11,6 +11,7 @@ const {
 } = require("../parser/matcher");
 const { reconcile } = require("../parser/reconciler");
 const { pushToZupa } = require("../zupa");
+const { findDuplicate, recordOrder } = require("../data/db");
 const {
   fmt,
   trunc,
@@ -443,42 +444,9 @@ async function handleZonePickerSubmit({ ack, body, view, client }) {
   });
 }
 
-// ── Confirm order ────────────────────────────────────────────────────────────
+// ── Shared: push a confirmed order to Zupa and update the message ────────────
 
-async function handleConfirmOrder({ ack, body, action, client }) {
-  await ack();
-
-  const channelId = body.container.channel_id;
-  const ts = body.container.message_ts;
-  const order = getOrder(channelId, ts);
-  if (!order) {
-    await client.chat.postEphemeral({
-      channel: channelId,
-      user: body.user.id,
-      text: "⚠️ Order state not found. The bot may have restarted. Please re-parse the order.",
-    });
-    return;
-  }
-
-  const unresolvedItems = order.items.filter((i) => i.issue !== null);
-  const zoneUnresolved =
-    !order.fulfillment.resolved || !order.fulfillment.zoneId;
-
-  if (unresolvedItems.length > 0 || zoneUnresolved) {
-    const reasons = [];
-    if (unresolvedItems.length > 0)
-      reasons.push(`${unresolvedItems.length} unresolved item(s)`);
-    if (zoneUnresolved) reasons.push("delivery zone not set");
-    await client.chat.postEphemeral({
-      channel: channelId,
-      user: body.user.id,
-      text: `⚠️ Cannot confirm yet: ${reasons.join(", ")}. Please resolve these first.`,
-    });
-    return;
-  }
-
-  const confirmedBy = body.user.id;
-
+async function executePush(order, confirmedBy, channelId, ts, client) {
   await client.chat.update({
     channel: channelId,
     ts,
@@ -498,12 +466,13 @@ async function handleConfirmOrder({ ack, body, action, client }) {
     });
     await client.chat.postEphemeral({
       channel: channelId,
-      user: body.user.id,
+      user: confirmedBy,
       text: `❌ Zupa push failed: ${err.message}`,
     });
     return;
   }
 
+  recordOrder(order.rawMessage || "", pushResult.orderNumber, order.customer?.name);
   deleteOrder(channelId, ts);
 
   const successText = [
@@ -515,12 +484,77 @@ async function handleConfirmOrder({ ack, body, action, client }) {
       : "_Payload logged (Zupa API not yet wired up)_",
   ].join("\n");
 
-  await client.chat.update({
-    channel: channelId,
-    ts,
-    text: successText,
-    blocks: [],
-  });
+  await client.chat.update({ channel: channelId, ts, text: successText, blocks: [] });
+}
+
+// ── Confirm order ────────────────────────────────────────────────────────────
+
+async function handleConfirmOrder({ ack, body, action, client }) {
+  await ack();
+
+  const channelId = body.container.channel_id;
+  const ts = body.container.message_ts;
+  const order = getOrder(channelId, ts);
+  if (!order) {
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: body.user.id,
+      text: "⚠️ Order state not found. The bot may have restarted. Please re-parse the order.",
+    });
+    return;
+  }
+
+  const unresolvedItems = order.items.filter((i) => i.issue !== null);
+  const zoneUnresolved = !order.fulfillment.resolved || !order.fulfillment.zoneId;
+
+  if (unresolvedItems.length > 0 || zoneUnresolved) {
+    const reasons = [];
+    if (unresolvedItems.length > 0)
+      reasons.push(`${unresolvedItems.length} unresolved item(s)`);
+    if (zoneUnresolved) reasons.push("delivery zone not set");
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: body.user.id,
+      text: `⚠️ Cannot confirm yet: ${reasons.join(", ")}. Please resolve these first.`,
+    });
+    return;
+  }
+
+  // Duplicate detection
+  const existing = findDuplicate(order.rawMessage || "");
+  if (existing) {
+    order.duplicateWarning = {
+      orderNumber: existing.order_number,
+      customerName: existing.customer_name,
+      confirmedAt: existing.confirmed_at,
+    };
+    saveOrder(channelId, ts, order);
+    await client.chat.update({
+      channel: channelId,
+      ts,
+      text: "Review Order",
+      blocks: buildReviewOrderBlocks(order),
+    });
+    return;
+  }
+
+  await executePush(order, body.user.id, channelId, ts, client);
+}
+
+// ── Override duplicate: user confirmed they want to submit anyway ─────────────
+
+async function handleOverrideDuplicate({ ack, body, action, client }) {
+  await ack();
+
+  const channelId = body.container.channel_id;
+  const ts = body.container.message_ts;
+  const order = getOrder(channelId, ts);
+  if (!order) return;
+
+  order.duplicateWarning = null;
+  saveOrder(channelId, ts, order);
+
+  await executePush(order, body.user.id, channelId, ts, client);
 }
 
 // ── Reject order ─────────────────────────────────────────────────────────────
@@ -555,5 +589,6 @@ module.exports = {
   handleChangeZone,
   handleZonePickerSubmit,
   handleConfirmOrder,
+  handleOverrideDuplicate,
   handleRejectOrder,
 };
