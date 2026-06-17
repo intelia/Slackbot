@@ -24,6 +24,7 @@ function createApp() {
 
   // ── External select options ─────────────────────────────────────────────────
   app.options('product_search_select', handlers.handleProductSearchOptions);
+  app.options('zone_search_select', handlers.handleZoneSearchOptions);
 
   // ── Actions ─────────────────────────────────────────────────────────────────
   // Product selection dropdown (matches product_pick_0, product_pick_1, etc.)

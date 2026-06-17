@@ -53,38 +53,6 @@ class SystemProducts {
   }
 
   static async createOrder(payload) {
-    /**
-     * sample payload
-     * 
-    {
-      "customer": {
-        "name": "Adebayo Johnson",
-        "phoneNumber": "+2348012345678"
-      },
-      "order": {
-        "amount": 15500,
-        "specialNote": "Extra spicy please, no onions",
-        "items": [
-          {
-            "productId": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-            "quantity": 2,
-            "price": 5000
-          },
-          {
-            "productId": "f9e8d7c6-b5a4-3210-fedc-ba9876543210",
-            "quantity": 1,
-            "price": 5500
-          }
-        ]
-      },
-      "address": {
-        "deliveryAddress": "14 Admiralty Way, Lekki Phase 1, Lagos",
-        "isPickup": false,
-        "cityId": "6d62e719-ebd0-4c0e-bb33-0f642b8a046b"
-        "pickupStore": lekki | opebi
-      }
-    }
-     */
     try {
       const endpoint = "customer-requests/stores/slack-bot/order/new";
       const res = await this.makeRequest({
@@ -109,6 +77,7 @@ class SystemProducts {
           name: city.name,
           id: city.id,
           price: city.price,
+          closestStore: city.closestStore,
         };
       });
     } catch (error) {

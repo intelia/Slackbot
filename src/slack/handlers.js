@@ -3,11 +3,11 @@
 const { parse } = require("../parser/index");
 const {
   matchProduct,
-  matchZone,
   getZoneById,
   getProductIndex,
+  namedZones,
   rideHailTiers,
-  pickupRows,
+  normalize,
 } = require("../parser/matcher");
 const { reconcile } = require("../parser/reconciler");
 const { pushToZupa } = require("../zupa");
@@ -107,17 +107,18 @@ async function handleParseOrderSubmit({ ack, body, view, client }) {
 
   if (!rawText || !channelId) return;
 
+  const loading = await client.chat.postMessage({
+    channel: channelId,
+    text: "Parsing order…",
+    blocks: [{ type: "section", text: { type: "mrkdwn", text: ":hourglass_flowing_sand: *Parsing order…*" } }],
+  });
+
   const order = await parse(rawText);
   const blocks = buildReviewOrderBlocks(order);
 
-  const result = await client.chat.postMessage({
-    channel: channelId,
-    text: "Review Order",
-    blocks,
-  });
-
-  if (result.ts) {
-    saveOrder(channelId, result.ts, order);
+  if (loading.ts) {
+    await client.chat.update({ channel: channelId, ts: loading.ts, text: "Review Order", blocks });
+    saveOrder(channelId, loading.ts, order);
   }
 }
 
@@ -129,18 +130,19 @@ async function handleMentionOrder({ event, client }) {
 
   if (!rawText) return;
 
+  const loading = await client.chat.postMessage({
+    channel: channelId,
+    thread_ts: event.ts,
+    text: "Parsing order…",
+    blocks: [{ type: "section", text: { type: "mrkdwn", text: ":hourglass_flowing_sand: *Parsing order…*" } }],
+  });
+
   const order = await parse(rawText);
   const blocks = buildReviewOrderBlocks(order);
 
-  const result = await client.chat.postMessage({
-    channel: channelId,
-    thread_ts: event.ts,
-    text: "Review Order",
-    blocks,
-  });
-
-  if (result.ts) {
-    saveOrder(channelId, result.ts, order);
+  if (loading.ts) {
+    await client.chat.update({ channel: channelId, ts: loading.ts, text: "Review Order", blocks });
+    saveOrder(channelId, loading.ts, order);
   }
 }
 
@@ -280,6 +282,53 @@ async function handleProductSearchOptions({ options, ack }) {
   });
 }
 
+// ── External select options: zone search ─────────────────────────────────────
+
+async function handleZoneSearchOptions({ options, ack }) {
+  const query = normalize(options.value || '').trim();
+  const nonSurge = namedZones.filter((z) => !z.isSurge);
+
+  let results;
+  if (query.length < 2) {
+    results = [...nonSurge]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, 100);
+  } else {
+    const qTokens = query.split(' ').filter((t) => t.length >= 2);
+    results = nonSurge
+      .map((z) => {
+        const zn = z.normalized;
+        let score = 0;
+        if (zn === query) score = 1;
+        else if (zn.startsWith(query)) score = 0.95;
+        else if (zn.includes(query)) score = 0.85;
+        else if (query.includes(zn)) score = 0.8;
+        else {
+          let matches = 0;
+          for (const t of qTokens) {
+            if (zn.includes(t) || zn.split(' ').some((zt) => zt.startsWith(t))) matches++;
+          }
+          score = qTokens.length > 0 ? matches / qTokens.length : 0;
+        }
+        return { zone: z, score };
+      })
+      .filter((r) => r.score > 0)
+      .sort((a, b) => b.score - a.score || a.zone.name.localeCompare(b.zone.name))
+      .slice(0, 100)
+      .map((r) => r.zone);
+  }
+
+  await ack({
+    options: results.map((z) => ({
+      text: {
+        type: 'plain_text',
+        text: trunc(`${z.name} — ${fmt(z.price)}`, 75),
+      },
+      value: z.id,
+    })),
+  });
+}
+
 // ── Product search submitted → update item ───────────────────────────────────
 
 async function handleProductSearchSubmit({ ack, body, view, client }) {
@@ -358,11 +407,10 @@ async function handleZonePickerSubmit({ ack, body, view, client }) {
   if (!order) return;
 
   const namedZoneId =
-    view.state.values.named_zone_select?.zone_select_input?.selected_option
+    view.state.values.named_zone_select?.zone_search_select?.selected_option
       ?.value;
   const rideHailId =
     view.state.values.ride_hail_select?.ride_hail_input?.selected_option?.value;
-  const zoneQuery = view.state.values.zone_search?.zone_input?.value || "";
 
   if (namedZoneId) {
     const zone = getZoneById(namedZoneId);
@@ -381,21 +429,6 @@ async function handleZonePickerSubmit({ ack, body, view, client }) {
       order.fulfillment.fee = tier.price;
       order.fulfillment.branch = tier.branch;
       order.fulfillment.resolved = true;
-    }
-  } else if (zoneQuery.trim()) {
-    const zone = matchZone(zoneQuery.trim());
-    if (zone) {
-      order.fulfillment.address = zoneQuery.trim();
-      order.fulfillment.zoneId = zone.id;
-      order.fulfillment.zoneName = zone.name;
-      order.fulfillment.branch = zone.branch;
-      order.fulfillment.fee = zone.price;
-      order.fulfillment.resolved = true;
-    } else {
-      order.fulfillment.address = zoneQuery.trim();
-      order.fulfillment.zoneId = null;
-      order.fulfillment.zoneName = null;
-      order.fulfillment.resolved = false;
     }
   }
 
@@ -445,10 +478,24 @@ async function handleConfirmOrder({ ack, body, action, client }) {
   }
 
   const confirmedBy = body.user.id;
+
+  await client.chat.update({
+    channel: channelId,
+    ts,
+    text: "Submitting order to Zupa…",
+    blocks: [{ type: "section", text: { type: "mrkdwn", text: ":hourglass_flowing_sand: *Submitting order to Zupa…*" } }],
+  });
+
   let pushResult;
   try {
     pushResult = await pushToZupa(order, confirmedBy);
   } catch (err) {
+    await client.chat.update({
+      channel: channelId,
+      ts,
+      text: "Review Order",
+      blocks: buildReviewOrderBlocks(order),
+    });
     await client.chat.postEphemeral({
       channel: channelId,
       user: body.user.id,
@@ -503,6 +550,7 @@ module.exports = {
   handleDoneEditItem,
   handleSearchProduct,
   handleProductSearchOptions,
+  handleZoneSearchOptions,
   handleProductSearchSubmit,
   handleChangeZone,
   handleZonePickerSubmit,

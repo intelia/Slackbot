@@ -84,12 +84,13 @@ function cleanCities(raw) {
     const name = (city.name || '').trim();
     if (!name) continue;
 
+    const rawBranch = city.closestStore || extractBranch(name);
     const entry = {
       id:                 city.id,
       name,
       normalized:         normalizeStr(name),
       price:              city.price,
-      branch:             extractBranch(name),
+      branch:             rawBranch.charAt(0).toUpperCase() + rawBranch.slice(1).toLowerCase(),
       isSurge:            SURGE_RE.test(name),
       baseNameNormalized: extractBaseNameNormalized(name),
     };
