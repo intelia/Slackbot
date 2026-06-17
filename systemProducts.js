@@ -67,6 +67,21 @@ class SystemProducts {
     }
   }
 
+  static async modifyOrder(payload) {
+    try {
+      const endpoint = "customer-requests/stores/slack-bot/order/modify";
+      const res = await this.makeRequest({
+        endpoint,
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      });
+      return res;
+    } catch (error) {
+      console.log("Error modifying order:", error.message);
+      return { status: "error", message: error.message };
+    }
+  }
+
   static async getDeliveryCities() {
     try {
       const endpoint = "auth/stores/8a7a28dc-b54d-4841-b949-efe60dbae709";

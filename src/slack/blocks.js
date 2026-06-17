@@ -364,10 +364,90 @@ function buildProductSearchModal(itemIndex, privateMetadata) {
   };
 }
 
+// ── Modification review blocks ────────────────────────────────────────────────
+
+function buildModReviewBlocks(mod, confirmedOrder) {
+  const blocks = [];
+  const hasResolved = mod.addItems.length > 0 || mod.removeItems.length > 0 || mod.newZoneId;
+
+  blocks.push({
+    type: 'section',
+    text: {
+      type: 'mrkdwn',
+      text: `📝 *ORDER MODIFICATION*\nOrder \`${confirmedOrder.orderNumber || '—'}\`  ·  ${confirmedOrder.customer?.name || '—'}`,
+    },
+  });
+  blocks.push({ type: 'divider' });
+
+  if (mod.addItems.length > 0) {
+    const lines = mod.addItems.map(i => `  ➕  *${i.productName} · ${i.sizeName}*  ×${i.qty}  —  ${fmt(i.lineTotal)}`);
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*ADD:*\n${lines.join('\n')}` } });
+  }
+
+  if (mod.removeItems.length > 0) {
+    const lines = mod.removeItems.map(i => `  ➖  *${i.productName} · ${i.sizeName}*  ×${i.qty}  —  ${fmt(i.lineTotal)}`);
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*REMOVE:*\n${lines.join('\n')}` } });
+  }
+
+  if (mod.newZoneId) {
+    const prev = confirmedOrder.fulfillment?.zoneName || confirmedOrder.fulfillment?.address || '?';
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `*ADDRESS CHANGE:*\n  ${prev}  →  ${mod.newZoneName}  ${fmt(mod.newFee)}` },
+    });
+  } else if (mod.newAddress && !mod.newZoneId) {
+    const prev = confirmedOrder.fulfillment?.zoneName || confirmedOrder.fulfillment?.address || '?';
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `⚠️ *Address not matched:*  "${mod.newAddress}"\n_(${prev} unchanged)_` },
+    });
+  }
+
+  if (mod.unresolvedAdditions.length > 0) {
+    const lines = mod.unresolvedAdditions.map(i => `  ⚠️  "${i.raw}" — not found in catalogue`);
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*UNRESOLVED ADDITIONS:*\n${lines.join('\n')}` } });
+  }
+
+  if (mod.unresolvedRemovals.length > 0) {
+    const lines = mod.unresolvedRemovals.map(i => `  ⚠️  "${i.raw}" — not in this order`);
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*UNRESOLVED REMOVALS:*\n${lines.join('\n')}` } });
+  }
+
+  blocks.push({ type: 'divider' });
+
+  if (hasResolved) {
+    blocks.push({
+      type: 'actions',
+      block_id: 'mod_actions',
+      elements: [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: 'Cancel' },
+          action_id: 'mod_reject',
+        },
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: 'Apply Modification' },
+          style: 'primary',
+          action_id: 'mod_confirm',
+        },
+      ],
+    });
+  } else {
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: "_No actionable changes found. Reply again with what you'd like to add, remove, or change._" },
+    });
+  }
+
+  return blocks;
+}
+
 module.exports = {
   fmt,
   trunc,
   buildReviewOrderBlocks,
   buildZonePickerModal,
   buildProductSearchModal,
+  buildModReviewBlocks,
 };

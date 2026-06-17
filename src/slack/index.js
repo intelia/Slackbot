@@ -16,6 +16,7 @@ function createApp() {
 
   // ── Events ──────────────────────────────────────────────────────────────────
   app.event('app_mention', handlers.handleMentionOrder);
+  app.event('message', handlers.handleThreadMessage);
 
   // ── Modal submissions ───────────────────────────────────────────────────────
   app.view('parse_order_submit', handlers.handleParseOrderSubmit);
@@ -44,6 +45,10 @@ function createApp() {
   app.action('confirm_order', handlers.handleConfirmOrder);
   app.action('override_duplicate', handlers.handleOverrideDuplicate);
   app.action('reject_order', handlers.handleRejectOrder);
+
+  // Order modification
+  app.action('mod_confirm', handlers.handleModConfirm);
+  app.action('mod_reject', handlers.handleModReject);
 
   return app;
 }

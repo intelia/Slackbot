@@ -10,14 +10,16 @@ const {
   normalize,
 } = require("../parser/matcher");
 const { reconcile } = require("../parser/reconciler");
-const { pushToZupa } = require("../zupa");
-const { findDuplicate, recordOrder } = require("../data/db");
+const { pushToZupa, pushModification } = require("../zupa");
+const { findDuplicate, recordOrder, saveConfirmedOrder, getConfirmedOrder, updateConfirmedOrder } = require("../data/db");
+const { parseModification } = require("../parser/mod-segmenter");
 const {
   fmt,
   trunc,
   buildReviewOrderBlocks,
   buildZonePickerModal,
   buildProductSearchModal,
+  buildModReviewBlocks,
 } = require("./blocks");
 
 // ── In-memory order state ─────────────────────────────────────────────────────
@@ -40,6 +42,10 @@ function saveOrder(channelId, ts, order) {
 function deleteOrder(channelId, ts) {
   orderStateMap.delete(stateKey(channelId, ts));
 }
+
+// ── In-memory modification state ──────────────────────────────────────────────
+// Key: `${channelId}:${modMessageTs}` → { threadTs, confirmedOrder, mod }
+const modStateMap = new Map();
 
 // Re-run reconciliation after an item/zone change and update aggregates
 function reReconcile(order) {
@@ -472,7 +478,9 @@ async function executePush(order, confirmedBy, channelId, ts, client) {
     return;
   }
 
+  order.orderNumber = pushResult.orderNumber;
   recordOrder(order.rawMessage || "", pushResult.orderNumber, order.customer?.name);
+  saveConfirmedOrder(channelId, ts, order);
   deleteOrder(channelId, ts);
 
   const successText = [
@@ -575,6 +583,146 @@ async function handleRejectOrder({ ack, body, action, client }) {
   });
 }
 
+// ── Thread reply: parse modification intent ───────────────────────────────────
+
+async function handleThreadMessage({ event, client }) {
+  // Skip bot messages, edited/deleted subtypes, and non-thread messages
+  if (event.subtype || event.bot_id) return;
+  if (!event.thread_ts || event.thread_ts === event.ts) return;
+
+  const channelId = event.channel;
+  const threadTs  = event.thread_ts;
+
+  const confirmedOrder = getConfirmedOrder(channelId, threadTs);
+  if (!confirmedOrder) return;
+
+  const rawText = (event.text || '').trim();
+  if (!rawText) return;
+
+  const loading = await client.chat.postMessage({
+    channel: channelId,
+    thread_ts: threadTs,
+    text: 'Parsing modification…',
+    blocks: [{ type: 'section', text: { type: 'mrkdwn', text: ':hourglass_flowing_sand: *Parsing modification…*' } }],
+  });
+  if (!loading.ts) return;
+
+  let mod;
+  try {
+    mod = await parseModification(rawText, confirmedOrder);
+  } catch (err) {
+    await client.chat.update({
+      channel: channelId,
+      ts: loading.ts,
+      text: '❌ Failed to parse modification',
+      blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `❌ Could not parse modification: ${err.message}` } }],
+    });
+    return;
+  }
+
+  modStateMap.set(stateKey(channelId, loading.ts), { threadTs, confirmedOrder, mod });
+
+  await client.chat.update({
+    channel: channelId,
+    ts: loading.ts,
+    text: 'Order Modification',
+    blocks: buildModReviewBlocks(mod, confirmedOrder),
+  });
+}
+
+// ── Mod confirm: apply the modification ──────────────────────────────────────
+
+async function handleModConfirm({ ack, body, client }) {
+  await ack();
+
+  const channelId    = body.container.channel_id;
+  const modMessageTs = body.container.message_ts;
+  const modState     = modStateMap.get(stateKey(channelId, modMessageTs));
+  if (!modState) return;
+
+  const { threadTs, confirmedOrder, mod } = modState;
+  const modifiedBy = body.user.id;
+
+  await client.chat.update({
+    channel: channelId,
+    ts: modMessageTs,
+    text: 'Applying modification…',
+    blocks: [{ type: 'section', text: { type: 'mrkdwn', text: ':hourglass_flowing_sand: *Applying modification…*' } }],
+  });
+
+  try {
+    await pushModification(confirmedOrder, mod, modifiedBy);
+  } catch (err) {
+    await client.chat.update({
+      channel: channelId,
+      ts: modMessageTs,
+      text: 'Modification failed',
+      blocks: [
+        { type: 'section', text: { type: 'mrkdwn', text: `❌ *Modification failed:* ${err.message}` } },
+        { type: 'section', text: { type: 'mrkdwn', text: '_Reply in this thread again to retry._' } },
+      ],
+    });
+    return;
+  }
+
+  modStateMap.delete(stateKey(channelId, modMessageTs));
+
+  // Apply changes to the stored order so future modifications have accurate state
+  if (mod.addItems.length > 0) confirmedOrder.items.push(...mod.addItems);
+  if (mod.removeItems.length > 0) {
+    const removedIds = new Set(mod.removeItems.map(i => i.sizeId));
+    confirmedOrder.items = confirmedOrder.items.filter(i => !removedIds.has(i.sizeId));
+  }
+  if (mod.newZoneId) {
+    confirmedOrder.fulfillment.zoneId   = mod.newZoneId;
+    confirmedOrder.fulfillment.zoneName = mod.newZoneName;
+    confirmedOrder.fulfillment.branch   = mod.newBranch;
+    confirmedOrder.fulfillment.fee      = mod.newFee;
+    confirmedOrder.fulfillment.address  = mod.newAddress;
+  }
+  updateConfirmedOrder(channelId, threadTs, confirmedOrder);
+
+  const addedLines   = mod.addItems.map(i => `  ➕  ${i.productName} · ${i.sizeName} ×${i.qty} — ${fmt(i.lineTotal)}`);
+  const removedLines = mod.removeItems.map(i => `  ➖  ${i.productName} · ${i.sizeName} ×${i.qty}`);
+  const addressLine  = mod.newZoneId ? `  📍  ${confirmedOrder.fulfillment.zoneName}` : null;
+  const summary      = [...addedLines, ...removedLines, addressLine].filter(Boolean).join('\n');
+
+  await client.chat.update({
+    channel: channelId,
+    ts: modMessageTs,
+    text: 'Modification applied',
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: `✅ *Modification applied by <@${modifiedBy}>*\nOrder \`${confirmedOrder.orderNumber}\`\n${summary}`,
+        },
+      },
+    ],
+  });
+}
+
+// ── Mod reject: cancel the pending modification ───────────────────────────────
+
+async function handleModReject({ ack, body, client }) {
+  await ack();
+
+  const channelId    = body.container.channel_id;
+  const modMessageTs = body.container.message_ts;
+
+  modStateMap.delete(stateKey(channelId, modMessageTs));
+
+  await client.chat.update({
+    channel: channelId,
+    ts: modMessageTs,
+    text: 'Modification cancelled',
+    blocks: [
+      { type: 'section', text: { type: 'mrkdwn', text: `✕ Modification cancelled by <@${body.user.id}>` } },
+    ],
+  });
+}
+
 module.exports = {
   handleParseOrderCommand,
   handleParseOrderSubmit,
@@ -591,4 +739,7 @@ module.exports = {
   handleConfirmOrder,
   handleOverrideDuplicate,
   handleRejectOrder,
+  handleThreadMessage,
+  handleModConfirm,
+  handleModReject,
 };

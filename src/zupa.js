@@ -70,4 +70,47 @@ async function pushToZupa(order, confirmedBy) {
   };
 }
 
-module.exports = { pushToZupa, buildZupaPayload };
+// ── Order modification ────────────────────────────────────────────────────────
+
+function buildModPayload(confirmedOrder, mod) {
+  const payload = { orderNumber: confirmedOrder.orderNumber };
+
+  if (mod.addItems.length > 0) {
+    payload.addItems = mod.addItems.map((i) => ({
+      productId: i.sizeId,
+      quantity: i.qty,
+      price: i.unitPrice,
+    }));
+  }
+
+  if (mod.removeItems.length > 0) {
+    payload.removeItems = mod.removeItems.map((i) => ({ productId: i.sizeId }));
+  }
+
+  if (mod.newZoneId) {
+    payload.updateAddress = {
+      deliveryAddress: mod.newAddress,
+      cityId: mod.newZoneId,
+    };
+  }
+
+  return payload;
+}
+
+async function pushModification(confirmedOrder, mod, modifiedBy) {
+  const payload = buildModPayload(confirmedOrder, mod);
+
+  console.log(
+    `[Zupa] Pushing modification for ${confirmedOrder.orderNumber} by ${modifiedBy}:`,
+    JSON.stringify(payload, null, 2),
+  );
+
+  const res = await SystemProducts.modifyOrder(payload);
+  if (!res) throw new Error("No response from Zupa API");
+  if (res.status === "error")
+    throw new Error(res.message || "Zupa API returned an error");
+
+  return { payload, raw: res };
+}
+
+module.exports = { pushToZupa, buildZupaPayload, pushModification, buildModPayload };
