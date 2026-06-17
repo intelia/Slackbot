@@ -456,6 +456,62 @@ function buildModReviewBlocks(mod, confirmedOrder) {
   return blocks;
 }
 
+// ── /menu modal ───────────────────────────────────────────────────────────────
+
+function buildMenuModal() {
+  return {
+    type: 'modal',
+    title: { type: 'plain_text', text: 'Menu' },
+    close: { type: 'plain_text', text: 'Close' },
+    blocks: [
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: 'Search any product to see its sizes and prices.' },
+      },
+      {
+        type: 'actions',
+        block_id: 'menu_search',
+        elements: [
+          {
+            type: 'external_select',
+            action_id: 'menu_search_select',
+            placeholder: { type: 'plain_text', text: 'Type to search… e.g. "banana", "choc cake"' },
+            min_query_length: 0,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+// ── /cities modal ─────────────────────────────────────────────────────────────
+
+function buildCitiesModal() {
+  return {
+    type: 'modal',
+    title: { type: 'plain_text', text: 'Delivery Zones' },
+    close: { type: 'plain_text', text: 'Close' },
+    blocks: [
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: 'Search all delivery zones and fees.' },
+      },
+      {
+        type: 'actions',
+        block_id: 'cities_search',
+        elements: [
+          {
+            type: 'external_select',
+            action_id: 'cities_search_select',
+            placeholder: { type: 'plain_text', text: 'Type to search… e.g. "Lekki", "VI", "Chevron"' },
+            min_query_length: 0,
+          },
+        ],
+      },
+    ],
+  };
+}
+
 module.exports = {
   fmt,
   trunc,
@@ -464,4 +520,6 @@ module.exports = {
   buildZonePickerModal,
   buildProductSearchModal,
   buildModReviewBlocks,
+  buildMenuModal,
+  buildCitiesModal,
 };

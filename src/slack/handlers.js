@@ -27,6 +27,8 @@ const {
   buildZonePickerModal,
   buildProductSearchModal,
   buildModReviewBlocks,
+  buildMenuModal,
+  buildCitiesModal,
 } = require("./blocks");
 
 // ── In-memory order state ─────────────────────────────────────────────────────
@@ -856,6 +858,93 @@ async function handleModReject({ ack, body, client }) {
   });
 }
 
+// ── /menu command ─────────────────────────────────────────────────────────────
+
+async function handleMenuCommand({ command, ack, client }) {
+  await ack();
+  await client.views.open({ trigger_id: command.trigger_id, view: buildMenuModal() });
+}
+
+async function handleMenuSearchOptions({ options, ack }) {
+  const query = (options.value || "").trim();
+  let candidates;
+  if (query.length < 2) {
+    candidates = getProductIndex()
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .flatMap((p) =>
+        p.sizes.map((s) => ({ productName: p.name, sizeName: s.name, sizeId: s.id, price: s.price })),
+      )
+      .slice(0, 100);
+  } else {
+    candidates = matchProduct(query, null, null, null, 100);
+  }
+  await ack({
+    options: candidates.map((c) => ({
+      text: { type: "plain_text", text: trunc(`${c.productName} · ${c.sizeName} — ${fmt(c.price)}`, 75) },
+      value: c.sizeId,
+    })),
+  });
+}
+
+async function handleMenuSelect({ ack }) { await ack(); }
+
+// ── /cities command ───────────────────────────────────────────────────────────
+
+async function handleCitiesCommand({ command, ack, client }) {
+  await ack();
+  await client.views.open({ trigger_id: command.trigger_id, view: buildCitiesModal() });
+}
+
+async function handleCitiesSearchOptions({ options, ack }) {
+  const query = normalize(options.value || "").trim();
+  const zones = namedZones.filter((z) => !z.isSurge);
+  const allOptions = [...zones, ...rideHailTiers];
+
+  let results;
+  if (query.length < 2) {
+    results = [...zones]
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .concat(rideHailTiers)
+      .slice(0, 100);
+  } else {
+    const qTokens = query.split(" ").filter((t) => t.length >= 2);
+    results = allOptions
+      .map((z) => {
+        const zn = z.normalized;
+        let score = 0;
+        if (zn === query) score = 1;
+        else if (zn.startsWith(query)) score = 0.95;
+        else if (zn.includes(query)) score = 0.85;
+        else if (query.includes(zn)) score = 0.8;
+        else {
+          let matches = 0;
+          for (const t of qTokens) {
+            if (zn.includes(t) || zn.split(" ").some((zt) => zt.startsWith(t))) matches++;
+          }
+          score = qTokens.length > 0 ? matches / qTokens.length : 0;
+        }
+        return { zone: z, score };
+      })
+      .filter((r) => r.score > 0)
+      .sort((a, b) => b.score - a.score || a.zone.name.localeCompare(b.zone.name))
+      .slice(0, 100)
+      .map((r) => r.zone);
+  }
+
+  await ack({
+    options: results.map((z) => ({
+      text: {
+        type: "plain_text",
+        text: trunc(`${z.name} · ${z.branch || "Ride-hail"} — ${fmt(z.price)}`, 75),
+      },
+      value: z.id,
+    })),
+  });
+}
+
+async function handleCitiesSelect({ ack }) { await ack(); }
+
 // ── Version command ───────────────────────────────────────────────────────────
 
 async function handleVersionCommand({ message, say }) {
@@ -893,4 +982,10 @@ module.exports = {
   handleModConfirm,
   handleModReject,
   handleVersionCommand,
+  handleMenuCommand,
+  handleMenuSearchOptions,
+  handleMenuSelect,
+  handleCitiesCommand,
+  handleCitiesSearchOptions,
+  handleCitiesSelect,
 };

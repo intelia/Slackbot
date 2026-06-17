@@ -13,6 +13,8 @@ function createApp() {
 
   // ── Commands ────────────────────────────────────────────────────────────────
   app.command('/parse-order', handlers.handleParseOrderCommand);
+  app.command('/menu', handlers.handleMenuCommand);
+  app.command('/cities', handlers.handleCitiesCommand);
 
   // ── Events ──────────────────────────────────────────────────────────────────
   app.event('app_mention', handlers.handleMentionOrder);
@@ -27,6 +29,8 @@ function createApp() {
   // ── External select options ─────────────────────────────────────────────────
   app.options('product_search_select', handlers.handleProductSearchOptions);
   app.options('zone_search_select', handlers.handleZoneSearchOptions);
+  app.options('menu_search_select', handlers.handleMenuSearchOptions);
+  app.options('cities_search_select', handlers.handleCitiesSearchOptions);
 
   // ── Actions ─────────────────────────────────────────────────────────────────
   // Product selection dropdown (matches product_pick_0, product_pick_1, etc.)
@@ -53,6 +57,10 @@ function createApp() {
   // Order modification
   app.action('mod_confirm', handlers.handleModConfirm);
   app.action('mod_reject', handlers.handleModReject);
+
+  // Menu / cities browse (no-op ack — modals are read-only)
+  app.action('menu_search_select', handlers.handleMenuSelect);
+  app.action('cities_search_select', handlers.handleCitiesSelect);
 
   return app;
 }
