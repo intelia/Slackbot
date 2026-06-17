@@ -140,20 +140,6 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
   const unresolvedItems = order.items.filter(i => i.issue !== null);
   const zoneUnresolved = !order.fulfillment.resolved || !order.fulfillment.zoneId;
 
-  // Duplicate warning banner
-  if (order.duplicateWarning) {
-    const dw = order.duplicateWarning;
-    const when = new Date(dw.confirmedAt).toLocaleString('en-NG', { timeZone: 'Africa/Lagos' });
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `⚠️ *Duplicate order detected!*\nThis message was already submitted as order \`${dw.orderNumber || '—'}\` for *${dw.customerName || '—'}* on ${when}.\nClick *Submit anyway* to proceed, or *Reject* to discard.`,
-      },
-    });
-    blocks.push({ type: 'divider' });
-  }
-
   // Header
   const needsReviewCount = unresolvedItems.length + (zoneUnresolved ? 1 : 0);
   const hasMismatch = needsReviewCount === 0 && order.reconciliation.status === 'mismatch';
@@ -244,16 +230,12 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
 
   // Action buttons
   const canConfirm = unresolvedItems.length === 0 && !zoneUnresolved;
-  const isDuplicateOverride = canConfirm && !!order.duplicateWarning;
 
   const confirmButton = {
     type: 'button',
-    text: {
-      type: 'plain_text',
-      text: !canConfirm ? '🔒 Resolve issues first' : isDuplicateOverride ? '⚠️ Submit anyway' : 'Confirm & Push to Zupa',
-    },
-    style: !canConfirm ? undefined : isDuplicateOverride ? 'danger' : 'primary',
-    action_id: isDuplicateOverride ? 'override_duplicate' : 'confirm_order',
+    text: { type: 'plain_text', text: canConfirm ? 'Confirm & Push to Zupa' : '🔒 Resolve issues first' },
+    style: canConfirm ? 'primary' : undefined,
+    action_id: 'confirm_order',
     value: 'confirm',
   };
 
@@ -291,6 +273,37 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
   });
 
   return blocks;
+}
+
+// ── Pre-parse duplicate warning ───────────────────────────────────────────────
+
+function buildDuplicateWarningBlocks(duplicate) {
+  const when = new Date(duplicate.confirmed_at).toLocaleString('en-NG', { timeZone: 'Africa/Lagos' });
+  return [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `⚠️ *Duplicate order detected*\nThis exact message was already submitted as order \`${duplicate.order_number || '—'}\` for *${duplicate.customer_name || '—'}* on ${when}.\n\nWould you like to parse it anyway?`,
+      },
+    },
+    {
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: 'Cancel' },
+          action_id: 'cancel_parse',
+        },
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: 'Parse anyway' },
+          style: 'danger',
+          action_id: 'parse_anyway',
+        },
+      ],
+    },
+  ];
 }
 
 // ── Zone change modal ─────────────────────────────────────────────────────────
@@ -447,6 +460,7 @@ module.exports = {
   fmt,
   trunc,
   buildReviewOrderBlocks,
+  buildDuplicateWarningBlocks,
   buildZonePickerModal,
   buildProductSearchModal,
   buildModReviewBlocks,

@@ -42,9 +42,12 @@ function createApp() {
   // Zone picker
   app.action('change_zone', handlers.handleChangeZone);
 
+  // Duplicate warning
+  app.action('parse_anyway', handlers.handleParseAnyway);
+  app.action('cancel_parse', handlers.handleCancelParse);
+
   // Order lifecycle
   app.action('confirm_order', handlers.handleConfirmOrder);
-  app.action('override_duplicate', handlers.handleOverrideDuplicate);
   app.action('reject_order', handlers.handleRejectOrder);
 
   // Order modification

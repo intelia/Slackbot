@@ -23,6 +23,7 @@ const {
   fmt,
   trunc,
   buildReviewOrderBlocks,
+  buildDuplicateWarningBlocks,
   buildZonePickerModal,
   buildProductSearchModal,
   buildModReviewBlocks,
@@ -52,6 +53,10 @@ function deleteOrder(channelId, ts) {
 // ── In-memory modification state ──────────────────────────────────────────────
 // Key: `${channelId}:${modMessageTs}` → { threadTs, confirmedOrder, mod }
 const modStateMap = new Map();
+
+// ── In-memory pending-parse state (awaiting duplicate confirmation) ────────────
+// Key: `${channelId}:${warningMessageTs}` → { channelId, rawText, threadTs? }
+const pendingParseMap = new Map();
 
 // Re-run reconciliation after an item/zone change and update aggregates
 function reReconcile(order) {
@@ -120,30 +125,30 @@ async function handleParseOrderSubmit({ ack, body, view, client }) {
 
   if (!rawText || !channelId) return;
 
+  const existing = findDuplicate(rawText);
+  if (existing) {
+    const warning = await client.chat.postMessage({
+      channel: channelId,
+      text: "Duplicate order detected",
+      blocks: buildDuplicateWarningBlocks(existing),
+    });
+    if (warning.ts) {
+      pendingParseMap.set(stateKey(channelId, warning.ts), { channelId, rawText });
+    }
+    return;
+  }
+
   const loading = await client.chat.postMessage({
     channel: channelId,
     text: "Parsing order…",
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: ":hourglass_flowing_sand: *Parsing order…*",
-        },
-      },
-    ],
+    blocks: [{ type: "section", text: { type: "mrkdwn", text: ":hourglass_flowing_sand: *Parsing order…*" } }],
   });
 
   const order = await parse(rawText);
   const blocks = buildReviewOrderBlocks(order);
 
   if (loading.ts) {
-    await client.chat.update({
-      channel: channelId,
-      ts: loading.ts,
-      text: "Review Order",
-      blocks,
-    });
+    await client.chat.update({ channel: channelId, ts: loading.ts, text: "Review Order", blocks });
     saveOrder(channelId, loading.ts, order);
   }
 }
@@ -156,19 +161,25 @@ async function handleMentionOrder({ event, client }) {
 
   if (!rawText) return;
 
+  const existing = findDuplicate(rawText);
+  if (existing) {
+    const warning = await client.chat.postMessage({
+      channel: channelId,
+      thread_ts: event.ts,
+      text: "Duplicate order detected",
+      blocks: buildDuplicateWarningBlocks(existing),
+    });
+    if (warning.ts) {
+      pendingParseMap.set(stateKey(channelId, warning.ts), { channelId, rawText, threadTs: event.ts });
+    }
+    return;
+  }
+
   const loading = await client.chat.postMessage({
     channel: channelId,
     thread_ts: event.ts,
     text: "Parsing order…",
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: ":hourglass_flowing_sand: *Parsing order…*",
-        },
-      },
-    ],
+    blocks: [{ type: "section", text: { type: "mrkdwn", text: ":hourglass_flowing_sand: *Parsing order…*" } }],
   });
 
   const order = await parse(rawText);
@@ -581,41 +592,49 @@ async function handleConfirmOrder({ ack, body, action, client }) {
     return;
   }
 
-  // Duplicate detection
-  const existing = findDuplicate(order.rawMessage || "");
-  if (existing) {
-    order.duplicateWarning = {
-      orderNumber: existing.order_number,
-      customerName: existing.customer_name,
-      confirmedAt: existing.confirmed_at,
-    };
-    saveOrder(channelId, ts, order);
-    await client.chat.update({
-      channel: channelId,
-      ts,
-      text: "Review Order",
-      blocks: buildReviewOrderBlocks(order),
-    });
-    return;
-  }
-
   await executePush(order, body.user.id, channelId, ts, client);
 }
 
-// ── Override duplicate: user confirmed they want to submit anyway ─────────────
+// ── Parse anyway: proceed after duplicate warning ─────────────────────────────
 
-async function handleOverrideDuplicate({ ack, body, action, client }) {
+async function handleParseAnyway({ ack, body, client }) {
+  await ack();
+
+  const channelId  = body.container.channel_id;
+  const warningTs  = body.container.message_ts;
+  const pending    = pendingParseMap.get(stateKey(channelId, warningTs));
+  if (!pending) return;
+  pendingParseMap.delete(stateKey(channelId, warningTs));
+
+  await client.chat.update({
+    channel: channelId,
+    ts: warningTs,
+    text: "Parsing order…",
+    blocks: [{ type: "section", text: { type: "mrkdwn", text: ":hourglass_flowing_sand: *Parsing order…*" } }],
+  });
+
+  const order  = await parse(pending.rawText);
+  const blocks = buildReviewOrderBlocks(order);
+
+  await client.chat.update({ channel: channelId, ts: warningTs, text: "Review Order", blocks });
+  saveOrder(channelId, warningTs, order);
+}
+
+// ── Cancel parse: dismiss duplicate warning ───────────────────────────────────
+
+async function handleCancelParse({ ack, body, client }) {
   await ack();
 
   const channelId = body.container.channel_id;
-  const ts = body.container.message_ts;
-  const order = getOrder(channelId, ts);
-  if (!order) return;
+  const warningTs = body.container.message_ts;
+  pendingParseMap.delete(stateKey(channelId, warningTs));
 
-  order.duplicateWarning = null;
-  saveOrder(channelId, ts, order);
-
-  await executePush(order, body.user.id, channelId, ts, client);
+  await client.chat.update({
+    channel: channelId,
+    ts: warningTs,
+    text: "Duplicate dismissed",
+    blocks: [{ type: "section", text: { type: "mrkdwn", text: "✕ Duplicate order dismissed." } }],
+  });
 }
 
 // ── Reject order ─────────────────────────────────────────────────────────────
@@ -650,7 +669,7 @@ async function handleThreadMessage({ event, client }) {
   if (!confirmedOrder) return;
 
   const rawText = (event.text || "").trim();
-  if (!rawText) return;
+  if (!rawText || rawText === "--version") return;
 
   const loading = await client.chat.postMessage({
     channel: channelId,
@@ -863,7 +882,8 @@ module.exports = {
   handleChangeZone,
   handleZonePickerSubmit,
   handleConfirmOrder,
-  handleOverrideDuplicate,
+  handleParseAnyway,
+  handleCancelParse,
   handleRejectOrder,
   handleThreadMessage,
   handleModConfirm,
