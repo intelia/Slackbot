@@ -31,6 +31,9 @@ function createApp() {
   app.options('zone_search_select', handlers.handleZoneSearchOptions);
   app.options('menu_search_select', handlers.handleMenuSearchOptions);
   app.options('cities_search_select', handlers.handleCitiesSearchOptions);
+  // Mod review pickers reuse the same data sources
+  app.options('mod_add_search', handlers.handleProductSearchOptions);
+  app.options('mod_zone_select', handlers.handleZoneSearchOptions);
 
   // ── Actions ─────────────────────────────────────────────────────────────────
   // Product selection dropdown (matches product_pick_0, product_pick_1, etc.)
@@ -57,6 +60,10 @@ function createApp() {
   // Order modification
   app.action('mod_confirm', handlers.handleModConfirm);
   app.action('mod_reject', handlers.handleModReject);
+  app.action('mod_add_pick', handlers.handleModAddPick);
+  app.action('mod_add_search', handlers.handleModAddSearch);
+  app.action('mod_remove_pick', handlers.handleModRemovePick);
+  app.action('mod_zone_select', handlers.handleModZoneSelect);
 
   // Menu live filter (fires on each keystroke, updates modal via views.update)
   app.action('menu_search_input', handlers.handleMenuSearch);

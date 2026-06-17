@@ -31,6 +31,8 @@ Parse what the user wants to change:
 - addItems: new items to add. productPhrase must be the full catalogue name. sizeToken must be one of: mini, midi, regular, maxi, extra large, 6", 8", 10", 12", 14", standard, pack, packs, 25cl, 50cl, 1l, bowl — or null.
 - removeItems: items to remove, matched by name against CURRENT ORDER ITEMS above.
 - newAddress: new delivery area/address verbatim if the user wants to change it, else null.
+- newName: new customer name if the user wants to change it, else null.
+- newPhone: new customer phone number if the user wants to change it, else null.
 
 Return ONLY the JSON object matching the schema.`;
 }
@@ -67,8 +69,10 @@ const RESPONSE_FORMAT = {
           },
         },
         newAddress: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        newName:    { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        newPhone:   { anyOf: [{ type: 'string' }, { type: 'null' }] },
       },
-      required: ['addItems', 'removeItems', 'newAddress'],
+      required: ['addItems', 'removeItems', 'newAddress', 'newName', 'newPhone'],
       additionalProperties: false,
     },
   },
@@ -97,7 +101,7 @@ function resolve(seg, confirmedOrder) {
   const unresolvedAdditions = [];
 
   for (const item of seg.addItems) {
-    const candidates = matchProduct(item.productPhrase, item.sizeToken, item.statedPrice, item.qty);
+    const candidates = matchProduct(item.productPhrase, item.sizeToken, item.statedPrice, item.qty, 5);
     if (candidates.length > 0 && candidates[0].score >= 0.4) {
       const best = candidates[0];
       addItems.push({
@@ -107,6 +111,7 @@ function resolve(seg, confirmedOrder) {
         qty:         item.qty,
         unitPrice:   best.price,
         lineTotal:   best.price * item.qty,
+        candidates,
       });
     } else {
       unresolvedAdditions.push({ raw: item.productPhrase });
@@ -118,12 +123,12 @@ function resolve(seg, confirmedOrder) {
 
   for (const item of seg.removeItems) {
     const phraseNorm = normalize(item.productPhrase || '');
-    const found = confirmedOrder.items.find(oi => {
+    const matches = confirmedOrder.items.filter(oi => {
       const n = normalize(oi.productName || '');
       return n === phraseNorm || n.includes(phraseNorm) || phraseNorm.includes(n);
     });
-    if (found) {
-      removeItems.push(found);
+    if (matches.length > 0) {
+      removeItems.push({ ...matches[0], candidates: matches });
     } else {
       unresolvedRemovals.push({ raw: item.productPhrase });
     }
@@ -150,6 +155,8 @@ function resolve(seg, confirmedOrder) {
     newZoneName,
     newBranch,
     newFee,
+    newName:  seg.newName  || null,
+    newPhone: seg.newPhone || null,
   };
 }
 

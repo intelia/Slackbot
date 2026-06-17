@@ -75,6 +75,12 @@ async function pushToZupa(order, confirmedBy) {
 function buildModPayload(confirmedOrder, mod) {
   const payload = { orderNumber: confirmedOrder.orderNumber };
 
+  if (mod.newName || mod.newPhone) {
+    payload.updateCustomer = {};
+    if (mod.newName)  payload.updateCustomer.name = mod.newName;
+    if (mod.newPhone) payload.updateCustomer.phoneNumber = formatPhone(mod.newPhone);
+  }
+
   if (mod.addItems.length > 0) {
     payload.addItems = mod.addItems.map((i) => ({
       productId: i.sizeId,

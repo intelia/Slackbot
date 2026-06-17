@@ -786,6 +786,8 @@ async function handleModConfirm({ ack, body, client }) {
   modStateMap.delete(stateKey(channelId, modMessageTs));
 
   // Apply changes to the stored order so future modifications have accurate state
+  if (mod.newName)  confirmedOrder.customer.name  = mod.newName;
+  if (mod.newPhone) confirmedOrder.customer.phone = mod.newPhone;
   if (mod.addItems.length > 0) confirmedOrder.items.push(...mod.addItems);
   if (mod.removeItems.length > 0) {
     const removedIds = new Set(mod.removeItems.map((i) => i.sizeId));
@@ -802,17 +804,12 @@ async function handleModConfirm({ ack, body, client }) {
   }
   updateConfirmedOrder(channelId, threadTs, confirmedOrder);
 
-  const addedLines = mod.addItems.map(
-    (i) =>
-      `  ➕  ${i.productName} · ${i.sizeName} ×${i.qty} — ${fmt(i.lineTotal)}`,
-  );
-  const removedLines = mod.removeItems.map(
-    (i) => `  ➖  ${i.productName} · ${i.sizeName} ×${i.qty}`,
-  );
-  const addressLine = mod.newZoneId
-    ? `  📍  ${confirmedOrder.fulfillment.zoneName}`
-    : null;
-  const summary = [...addedLines, ...removedLines, addressLine]
+  const nameLine    = mod.newName  ? `  👤  Name: ${mod.newName}`  : null;
+  const phoneLine   = mod.newPhone ? `  📱  Phone: ${mod.newPhone}` : null;
+  const addedLines  = mod.addItems.map((i) => `  ➕  ${i.productName} · ${i.sizeName} ×${i.qty} — ${fmt(i.lineTotal)}`);
+  const removedLines = mod.removeItems.map((i) => `  ➖  ${i.productName} · ${i.sizeName} ×${i.qty}`);
+  const addressLine = mod.newZoneId ? `  📍  ${confirmedOrder.fulfillment.zoneName}` : null;
+  const summary = [nameLine, phoneLine, ...addedLines, ...removedLines, addressLine]
     .filter(Boolean)
     .join("\n");
 
@@ -855,6 +852,130 @@ async function handleModReject({ ack, body, client }) {
         },
       },
     ],
+  });
+}
+
+// ── Mod: pick a different product for a resolved addition ─────────────────────
+
+async function handleModAddPick({ ack, body, client }) {
+  await ack();
+  const action = body.actions[0];
+  const sizeId = action.selected_option.value;
+  const idx = parseInt((action.block_id || '').split('_').pop(), 10);
+
+  const channelId = body.container.channel_id;
+  const modMessageTs = body.container.message_ts;
+  const modState = modStateMap.get(stateKey(channelId, modMessageTs));
+  if (!modState) return;
+
+  const item = modState.mod.addItems[idx];
+  if (!item) return;
+  const picked = (item.candidates || []).find((c) => c.sizeId === sizeId);
+  if (!picked) return;
+
+  modState.mod.addItems[idx] = {
+    ...item,
+    productName: picked.productName,
+    sizeName:    picked.sizeName,
+    sizeId:      picked.sizeId,
+    unitPrice:   picked.price,
+    lineTotal:   picked.price * item.qty,
+  };
+
+  await client.chat.update({
+    channel: channelId,
+    ts: modMessageTs,
+    text: 'Order Modification',
+    blocks: buildModReviewBlocks(modState.mod, modState.confirmedOrder),
+  });
+}
+
+// ── Mod: pick a product for an unresolved addition (external_select) ──────────
+
+async function handleModAddSearch({ ack, body, client }) {
+  await ack();
+  const action = body.actions[0];
+  const sizeId = action.selected_option.value;
+  const idx = parseInt((action.block_id || '').split('_').pop(), 10);
+
+  const channelId = body.container.channel_id;
+  const modMessageTs = body.container.message_ts;
+  const modState = modStateMap.get(stateKey(channelId, modMessageTs));
+  if (!modState) return;
+
+  // Find the product in the index
+  let found = null;
+  for (const p of getProductIndex()) {
+    const s = (p.sizes || []).find((sz) => sz && sz.id === sizeId);
+    if (s) { found = { productName: p.name, sizeName: s.name, sizeId: s.id, unitPrice: s.price }; break; }
+  }
+  if (!found) return;
+
+  // Move from unresolved to addItems
+  modState.mod.unresolvedAdditions.splice(idx, 1);
+  modState.mod.addItems.push({ ...found, qty: 1, lineTotal: found.unitPrice, candidates: [] });
+
+  await client.chat.update({
+    channel: channelId,
+    ts: modMessageTs,
+    text: 'Order Modification',
+    blocks: buildModReviewBlocks(modState.mod, modState.confirmedOrder),
+  });
+}
+
+// ── Mod: pick which order item to remove (when multiple candidates match) ─────
+
+async function handleModRemovePick({ ack, body, client }) {
+  await ack();
+  const action = body.actions[0];
+  const sizeId = action.selected_option.value;
+  const idx = parseInt((action.block_id || '').split('_').pop(), 10);
+
+  const channelId = body.container.channel_id;
+  const modMessageTs = body.container.message_ts;
+  const modState = modStateMap.get(stateKey(channelId, modMessageTs));
+  if (!modState) return;
+
+  const item = modState.mod.removeItems[idx];
+  if (!item) return;
+  const picked = (item.candidates || []).find((c) => c.sizeId === sizeId);
+  if (!picked) return;
+
+  modState.mod.removeItems[idx] = { ...picked, candidates: item.candidates };
+
+  await client.chat.update({
+    channel: channelId,
+    ts: modMessageTs,
+    text: 'Order Modification',
+    blocks: buildModReviewBlocks(modState.mod, modState.confirmedOrder),
+  });
+}
+
+// ── Mod: select delivery zone from external_select ───────────────────────────
+
+async function handleModZoneSelect({ ack, body, client }) {
+  await ack();
+  const action = body.actions[0];
+  const zoneId = action.selected_option.value;
+
+  const channelId = body.container.channel_id;
+  const modMessageTs = body.container.message_ts;
+  const modState = modStateMap.get(stateKey(channelId, modMessageTs));
+  if (!modState) return;
+
+  const zone = getZoneById(zoneId);
+  if (!zone) return;
+
+  modState.mod.newZoneId   = zone.id;
+  modState.mod.newZoneName = zone.name;
+  modState.mod.newBranch   = zone.branch;
+  modState.mod.newFee      = zone.price;
+
+  await client.chat.update({
+    channel: channelId,
+    ts: modMessageTs,
+    text: 'Order Modification',
+    blocks: buildModReviewBlocks(modState.mod, modState.confirmedOrder),
   });
 }
 
@@ -994,6 +1115,10 @@ module.exports = {
   handleThreadMessage,
   handleModConfirm,
   handleModReject,
+  handleModAddPick,
+  handleModAddSearch,
+  handleModRemovePick,
+  handleModZoneSelect,
   handleVersionCommand,
   handleMenuCommand,
   handleMenuSearchOptions,

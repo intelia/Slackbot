@@ -382,7 +382,6 @@ function buildProductSearchModal(itemIndex, privateMetadata) {
 
 function buildModReviewBlocks(mod, confirmedOrder) {
   const blocks = [];
-  const hasResolved = mod.addItems.length > 0 || mod.removeItems.length > 0 || mod.newZoneId;
 
   blocks.push({
     type: 'section',
@@ -393,60 +392,118 @@ function buildModReviewBlocks(mod, confirmedOrder) {
   });
   blocks.push({ type: 'divider' });
 
-  if (mod.addItems.length > 0) {
-    const lines = mod.addItems.map(i => `  ➕  *${i.productName} · ${i.sizeName}*  ×${i.qty}  —  ${fmt(i.lineTotal)}`);
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*ADD:*\n${lines.join('\n')}` } });
+  // ── Customer update ───────────────────────────────────────────────────────
+  if (mod.newName || mod.newPhone) {
+    const lines = [];
+    if (mod.newName)  lines.push(`  👤  Name: *${mod.newName}*`);
+    if (mod.newPhone) lines.push(`  📱  Phone: *${mod.newPhone}*`);
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*CUSTOMER UPDATE:*\n${lines.join('\n')}` } });
   }
 
-  if (mod.removeItems.length > 0) {
-    const lines = mod.removeItems.map(i => `  ➖  *${i.productName} · ${i.sizeName}*  ×${i.qty}  —  ${fmt(i.lineTotal)}`);
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*REMOVE:*\n${lines.join('\n')}` } });
+  // ── Resolved add items — static_select when candidates > 1 ───────────────
+  for (let i = 0; i < mod.addItems.length; i++) {
+    const item = mod.addItems[i];
+    const candidates = item.candidates || [];
+    if (candidates.length > 1) {
+      const options = candidates.map(c => ({
+        text: { type: 'plain_text', text: trunc(`${c.productName} · ${c.sizeName} — ${fmt(c.price)}`, 75) },
+        value: c.sizeId,
+      }));
+      const initial_option = options.find(o => o.value === item.sizeId) || options[0];
+      blocks.push({
+        type: 'section',
+        block_id: `mod_add_pick_${i}`,
+        text: { type: 'mrkdwn', text: `➕  *Add ×${item.qty}* — confirm product:` },
+        accessory: {
+          type: 'static_select',
+          action_id: 'mod_add_pick',
+          initial_option,
+          options,
+        },
+      });
+    } else {
+      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `  ➕  *${item.productName} · ${item.sizeName}*  ×${item.qty}  —  ${fmt(item.lineTotal)}` } });
+    }
   }
 
-  if (mod.newZoneId) {
-    const prev = confirmedOrder.fulfillment?.zoneName || confirmedOrder.fulfillment?.address || '?';
+  // ── Unresolved additions — external_select to search & pick ──────────────
+  for (let i = 0; i < mod.unresolvedAdditions.length; i++) {
+    const ua = mod.unresolvedAdditions[i];
     blocks.push({
       type: 'section',
-      text: { type: 'mrkdwn', text: `*ADDRESS CHANGE:*\n  ${prev}  →  ${mod.newZoneName}  ${fmt(mod.newFee)}` },
-    });
-  } else if (mod.newAddress && !mod.newZoneId) {
-    const prev = confirmedOrder.fulfillment?.zoneName || confirmedOrder.fulfillment?.address || '?';
-    blocks.push({
-      type: 'section',
-      text: { type: 'mrkdwn', text: `⚠️ *Address not matched:*  "${mod.newAddress}"\n_(${prev} unchanged)_` },
+      block_id: `mod_add_search_${i}`,
+      text: { type: 'mrkdwn', text: `⚠️  *"${trunc(ua.raw, 60)}"* — not found, search to add:` },
+      accessory: {
+        type: 'external_select',
+        action_id: 'mod_add_search',
+        placeholder: { type: 'plain_text', text: 'Search products…' },
+        min_query_length: 0,
+      },
     });
   }
 
-  if (mod.unresolvedAdditions.length > 0) {
-    const lines = mod.unresolvedAdditions.map(i => `  ⚠️  "${i.raw}" — not found in catalogue`);
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*UNRESOLVED ADDITIONS:*\n${lines.join('\n')}` } });
+  // ── Resolved remove items — static_select when multiple order items match ─
+  for (let i = 0; i < mod.removeItems.length; i++) {
+    const item = mod.removeItems[i];
+    const candidates = item.candidates || [];
+    if (candidates.length > 1) {
+      const options = candidates.map(c => ({
+        text: { type: 'plain_text', text: trunc(`${c.productName} · ${c.sizeName} ×${c.qty} — ${fmt(c.unitPrice)}`, 75) },
+        value: c.sizeId,
+      }));
+      const initial_option = options.find(o => o.value === item.sizeId) || options[0];
+      blocks.push({
+        type: 'section',
+        block_id: `mod_remove_pick_${i}`,
+        text: { type: 'mrkdwn', text: `➖  *Remove* — confirm which item:` },
+        accessory: {
+          type: 'static_select',
+          action_id: 'mod_remove_pick',
+          initial_option,
+          options,
+        },
+      });
+    } else {
+      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `  ➖  *${item.productName} · ${item.sizeName}*  ×${item.qty}  —  ${fmt(item.lineTotal || item.unitPrice * item.qty)}` } });
+    }
   }
 
+  // ── Unresolved removals (text only — nothing to pick from) ────────────────
   if (mod.unresolvedRemovals.length > 0) {
-    const lines = mod.unresolvedRemovals.map(i => `  ⚠️  "${i.raw}" — not in this order`);
+    const lines = mod.unresolvedRemovals.map(r => `  ⚠️  "${r.raw}" — not in this order`);
     blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*UNRESOLVED REMOVALS:*\n${lines.join('\n')}` } });
+  }
+
+  // ── Zone change — always show picker when an address was detected ─────────
+  if (mod.newAddress) {
+    const prev = confirmedOrder.fulfillment?.zoneName || confirmedOrder.fulfillment?.address || '?';
+    const matchText = mod.newZoneId
+      ? `✅  Matched: *${mod.newZoneName}*  ${fmt(mod.newFee)}  (${mod.newBranch || ''})`
+      : `⚠️  No zone matched for _"${mod.newAddress}"_ — search below`;
+    blocks.push({
+      type: 'section',
+      block_id: 'mod_zone_search',
+      text: { type: 'mrkdwn', text: `*ADDRESS CHANGE* _(was: ${prev})_\n${matchText}` },
+      accessory: {
+        type: 'external_select',
+        action_id: 'mod_zone_select',
+        placeholder: { type: 'plain_text', text: 'Confirm or change zone…' },
+        min_query_length: 0,
+      },
+    });
   }
 
   blocks.push({ type: 'divider' });
 
-  if (hasResolved) {
-    blocks.push({
-      type: 'actions',
-      block_id: 'mod_actions',
-      elements: [
-        {
-          type: 'button',
-          text: { type: 'plain_text', text: 'Cancel' },
-          action_id: 'mod_reject',
-        },
-        {
-          type: 'button',
-          text: { type: 'plain_text', text: 'Apply Modification' },
-          style: 'primary',
-          action_id: 'mod_confirm',
-        },
-      ],
-    });
+  const canApply = mod.addItems.length > 0 || mod.removeItems.length > 0 || mod.newZoneId || mod.newName || mod.newPhone;
+  const hasAnyChange = canApply || mod.unresolvedAdditions.length > 0 || (mod.newAddress && !mod.newZoneId);
+
+  if (hasAnyChange) {
+    const elements = [{ type: 'button', text: { type: 'plain_text', text: 'Cancel' }, action_id: 'mod_reject' }];
+    if (canApply) {
+      elements.push({ type: 'button', text: { type: 'plain_text', text: 'Apply Modification' }, style: 'primary', action_id: 'mod_confirm' });
+    }
+    blocks.push({ type: 'actions', block_id: 'mod_actions', elements });
   } else {
     blocks.push({
       type: 'section',
