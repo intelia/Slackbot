@@ -16,6 +16,7 @@ function createApp() {
 
   // ── Events ──────────────────────────────────────────────────────────────────
   app.event('app_mention', handlers.handleMentionOrder);
+  app.message('--version', handlers.handleVersionCommand);
   app.event('message', handlers.handleThreadMessage);
 
   // ── Modal submissions ───────────────────────────────────────────────────────

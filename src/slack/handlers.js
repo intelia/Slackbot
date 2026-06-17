@@ -723,6 +723,22 @@ async function handleModReject({ ack, body, client }) {
   });
 }
 
+// ── Version command ───────────────────────────────────────────────────────────
+
+async function handleVersionCommand({ message, say }) {
+  const { version } = require('../../../package.json');
+  await say({
+    text: `Zupa Order Bot v${version}`,
+    blocks: [
+      {
+        type: 'section',
+        text: { type: 'mrkdwn', text: `*Zupa Order Bot*  \`v${version}\`` },
+      },
+    ],
+    thread_ts: message.thread_ts || message.ts,
+  });
+}
+
 module.exports = {
   handleParseOrderCommand,
   handleParseOrderSubmit,
@@ -742,4 +758,5 @@ module.exports = {
   handleThreadMessage,
   handleModConfirm,
   handleModReject,
+  handleVersionCommand,
 };
