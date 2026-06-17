@@ -11,7 +11,13 @@ const {
 } = require("../parser/matcher");
 const { reconcile } = require("../parser/reconciler");
 const { pushToZupa, pushModification } = require("../zupa");
-const { findDuplicate, recordOrder, saveConfirmedOrder, getConfirmedOrder, updateConfirmedOrder } = require("../data/db");
+const {
+  findDuplicate,
+  recordOrder,
+  saveConfirmedOrder,
+  getConfirmedOrder,
+  updateConfirmedOrder,
+} = require("../data/db");
 const { parseModification } = require("../parser/mod-segmenter");
 const {
   fmt,
@@ -117,14 +123,27 @@ async function handleParseOrderSubmit({ ack, body, view, client }) {
   const loading = await client.chat.postMessage({
     channel: channelId,
     text: "Parsing order…",
-    blocks: [{ type: "section", text: { type: "mrkdwn", text: ":hourglass_flowing_sand: *Parsing order…*" } }],
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: ":hourglass_flowing_sand: *Parsing order…*",
+        },
+      },
+    ],
   });
 
   const order = await parse(rawText);
   const blocks = buildReviewOrderBlocks(order);
 
   if (loading.ts) {
-    await client.chat.update({ channel: channelId, ts: loading.ts, text: "Review Order", blocks });
+    await client.chat.update({
+      channel: channelId,
+      ts: loading.ts,
+      text: "Review Order",
+      blocks,
+    });
     saveOrder(channelId, loading.ts, order);
   }
 }
@@ -141,14 +160,27 @@ async function handleMentionOrder({ event, client }) {
     channel: channelId,
     thread_ts: event.ts,
     text: "Parsing order…",
-    blocks: [{ type: "section", text: { type: "mrkdwn", text: ":hourglass_flowing_sand: *Parsing order…*" } }],
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: ":hourglass_flowing_sand: *Parsing order…*",
+        },
+      },
+    ],
   });
 
   const order = await parse(rawText);
   const blocks = buildReviewOrderBlocks(order);
 
   if (loading.ts) {
-    await client.chat.update({ channel: channelId, ts: loading.ts, text: "Review Order", blocks });
+    await client.chat.update({
+      channel: channelId,
+      ts: loading.ts,
+      text: "Review Order",
+      blocks,
+    });
     saveOrder(channelId, loading.ts, order);
   }
 }
@@ -292,7 +324,7 @@ async function handleProductSearchOptions({ options, ack }) {
 // ── External select options: zone search ─────────────────────────────────────
 
 async function handleZoneSearchOptions({ options, ack }) {
-  const query = normalize(options.value || '').trim();
+  const query = normalize(options.value || "").trim();
   const nonSurge = namedZones.filter((z) => !z.isSurge);
 
   let results;
@@ -301,7 +333,7 @@ async function handleZoneSearchOptions({ options, ack }) {
       .sort((a, b) => a.name.localeCompare(b.name))
       .slice(0, 100);
   } else {
-    const qTokens = query.split(' ').filter((t) => t.length >= 2);
+    const qTokens = query.split(" ").filter((t) => t.length >= 2);
     results = nonSurge
       .map((z) => {
         const zn = z.normalized;
@@ -313,14 +345,17 @@ async function handleZoneSearchOptions({ options, ack }) {
         else {
           let matches = 0;
           for (const t of qTokens) {
-            if (zn.includes(t) || zn.split(' ').some((zt) => zt.startsWith(t))) matches++;
+            if (zn.includes(t) || zn.split(" ").some((zt) => zt.startsWith(t)))
+              matches++;
           }
           score = qTokens.length > 0 ? matches / qTokens.length : 0;
         }
         return { zone: z, score };
       })
       .filter((r) => r.score > 0)
-      .sort((a, b) => b.score - a.score || a.zone.name.localeCompare(b.zone.name))
+      .sort(
+        (a, b) => b.score - a.score || a.zone.name.localeCompare(b.zone.name),
+      )
       .slice(0, 100)
       .map((r) => r.zone);
   }
@@ -328,7 +363,7 @@ async function handleZoneSearchOptions({ options, ack }) {
   await ack({
     options: results.map((z) => ({
       text: {
-        type: 'plain_text',
+        type: "plain_text",
         text: trunc(`${z.name} — ${fmt(z.price)}`, 75),
       },
       value: z.id,
@@ -457,7 +492,15 @@ async function executePush(order, confirmedBy, channelId, ts, client) {
     channel: channelId,
     ts,
     text: "Submitting order to Zupa…",
-    blocks: [{ type: "section", text: { type: "mrkdwn", text: ":hourglass_flowing_sand: *Submitting order to Zupa…*" } }],
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: ":hourglass_flowing_sand: *Submitting order to Zupa…*",
+        },
+      },
+    ],
   });
 
   let pushResult;
@@ -479,7 +522,11 @@ async function executePush(order, confirmedBy, channelId, ts, client) {
   }
 
   order.orderNumber = pushResult.orderNumber;
-  recordOrder(order.rawMessage || "", pushResult.orderNumber, order.customer?.name);
+  recordOrder(
+    order.rawMessage || "",
+    pushResult.orderNumber,
+    order.customer?.name,
+  );
   saveConfirmedOrder(channelId, ts, order);
   deleteOrder(channelId, ts);
 
@@ -492,7 +539,12 @@ async function executePush(order, confirmedBy, channelId, ts, client) {
       : "_Payload logged (Zupa API not yet wired up)_",
   ].join("\n");
 
-  await client.chat.update({ channel: channelId, ts, text: successText, blocks: [] });
+  await client.chat.update({
+    channel: channelId,
+    ts,
+    text: successText,
+    blocks: [],
+  });
 }
 
 // ── Confirm order ────────────────────────────────────────────────────────────
@@ -513,7 +565,8 @@ async function handleConfirmOrder({ ack, body, action, client }) {
   }
 
   const unresolvedItems = order.items.filter((i) => i.issue !== null);
-  const zoneUnresolved = !order.fulfillment.resolved || !order.fulfillment.zoneId;
+  const zoneUnresolved =
+    !order.fulfillment.resolved || !order.fulfillment.zoneId;
 
   if (unresolvedItems.length > 0 || zoneUnresolved) {
     const reasons = [];
@@ -591,19 +644,27 @@ async function handleThreadMessage({ event, client }) {
   if (!event.thread_ts || event.thread_ts === event.ts) return;
 
   const channelId = event.channel;
-  const threadTs  = event.thread_ts;
+  const threadTs = event.thread_ts;
 
   const confirmedOrder = getConfirmedOrder(channelId, threadTs);
   if (!confirmedOrder) return;
 
-  const rawText = (event.text || '').trim();
+  const rawText = (event.text || "").trim();
   if (!rawText) return;
 
   const loading = await client.chat.postMessage({
     channel: channelId,
     thread_ts: threadTs,
-    text: 'Parsing modification…',
-    blocks: [{ type: 'section', text: { type: 'mrkdwn', text: ':hourglass_flowing_sand: *Parsing modification…*' } }],
+    text: "Parsing modification…",
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: ":hourglass_flowing_sand: *Parsing modification…*",
+        },
+      },
+    ],
   });
   if (!loading.ts) return;
 
@@ -614,18 +675,30 @@ async function handleThreadMessage({ event, client }) {
     await client.chat.update({
       channel: channelId,
       ts: loading.ts,
-      text: '❌ Failed to parse modification',
-      blocks: [{ type: 'section', text: { type: 'mrkdwn', text: `❌ Could not parse modification: ${err.message}` } }],
+      text: "❌ Failed to parse modification",
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `❌ Could not parse modification: ${err.message}`,
+          },
+        },
+      ],
     });
     return;
   }
 
-  modStateMap.set(stateKey(channelId, loading.ts), { threadTs, confirmedOrder, mod });
+  modStateMap.set(stateKey(channelId, loading.ts), {
+    threadTs,
+    confirmedOrder,
+    mod,
+  });
 
   await client.chat.update({
     channel: channelId,
     ts: loading.ts,
-    text: 'Order Modification',
+    text: "Order Modification",
     blocks: buildModReviewBlocks(mod, confirmedOrder),
   });
 }
@@ -635,9 +708,9 @@ async function handleThreadMessage({ event, client }) {
 async function handleModConfirm({ ack, body, client }) {
   await ack();
 
-  const channelId    = body.container.channel_id;
+  const channelId = body.container.channel_id;
   const modMessageTs = body.container.message_ts;
-  const modState     = modStateMap.get(stateKey(channelId, modMessageTs));
+  const modState = modStateMap.get(stateKey(channelId, modMessageTs));
   if (!modState) return;
 
   const { threadTs, confirmedOrder, mod } = modState;
@@ -646,8 +719,16 @@ async function handleModConfirm({ ack, body, client }) {
   await client.chat.update({
     channel: channelId,
     ts: modMessageTs,
-    text: 'Applying modification…',
-    blocks: [{ type: 'section', text: { type: 'mrkdwn', text: ':hourglass_flowing_sand: *Applying modification…*' } }],
+    text: "Applying modification…",
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: ":hourglass_flowing_sand: *Applying modification…*",
+        },
+      },
+    ],
   });
 
   try {
@@ -656,10 +737,22 @@ async function handleModConfirm({ ack, body, client }) {
     await client.chat.update({
       channel: channelId,
       ts: modMessageTs,
-      text: 'Modification failed',
+      text: "Modification failed",
       blocks: [
-        { type: 'section', text: { type: 'mrkdwn', text: `❌ *Modification failed:* ${err.message}` } },
-        { type: 'section', text: { type: 'mrkdwn', text: '_Reply in this thread again to retry._' } },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `❌ *Modification failed:* ${err.message}`,
+          },
+        },
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: "_Reply in this thread again to retry._",
+          },
+        },
       ],
     });
     return;
@@ -670,32 +763,43 @@ async function handleModConfirm({ ack, body, client }) {
   // Apply changes to the stored order so future modifications have accurate state
   if (mod.addItems.length > 0) confirmedOrder.items.push(...mod.addItems);
   if (mod.removeItems.length > 0) {
-    const removedIds = new Set(mod.removeItems.map(i => i.sizeId));
-    confirmedOrder.items = confirmedOrder.items.filter(i => !removedIds.has(i.sizeId));
+    const removedIds = new Set(mod.removeItems.map((i) => i.sizeId));
+    confirmedOrder.items = confirmedOrder.items.filter(
+      (i) => !removedIds.has(i.sizeId),
+    );
   }
   if (mod.newZoneId) {
-    confirmedOrder.fulfillment.zoneId   = mod.newZoneId;
+    confirmedOrder.fulfillment.zoneId = mod.newZoneId;
     confirmedOrder.fulfillment.zoneName = mod.newZoneName;
-    confirmedOrder.fulfillment.branch   = mod.newBranch;
-    confirmedOrder.fulfillment.fee      = mod.newFee;
-    confirmedOrder.fulfillment.address  = mod.newAddress;
+    confirmedOrder.fulfillment.branch = mod.newBranch;
+    confirmedOrder.fulfillment.fee = mod.newFee;
+    confirmedOrder.fulfillment.address = mod.newAddress;
   }
   updateConfirmedOrder(channelId, threadTs, confirmedOrder);
 
-  const addedLines   = mod.addItems.map(i => `  ➕  ${i.productName} · ${i.sizeName} ×${i.qty} — ${fmt(i.lineTotal)}`);
-  const removedLines = mod.removeItems.map(i => `  ➖  ${i.productName} · ${i.sizeName} ×${i.qty}`);
-  const addressLine  = mod.newZoneId ? `  📍  ${confirmedOrder.fulfillment.zoneName}` : null;
-  const summary      = [...addedLines, ...removedLines, addressLine].filter(Boolean).join('\n');
+  const addedLines = mod.addItems.map(
+    (i) =>
+      `  ➕  ${i.productName} · ${i.sizeName} ×${i.qty} — ${fmt(i.lineTotal)}`,
+  );
+  const removedLines = mod.removeItems.map(
+    (i) => `  ➖  ${i.productName} · ${i.sizeName} ×${i.qty}`,
+  );
+  const addressLine = mod.newZoneId
+    ? `  📍  ${confirmedOrder.fulfillment.zoneName}`
+    : null;
+  const summary = [...addedLines, ...removedLines, addressLine]
+    .filter(Boolean)
+    .join("\n");
 
   await client.chat.update({
     channel: channelId,
     ts: modMessageTs,
-    text: 'Modification applied',
+    text: "Modification applied",
     blocks: [
       {
-        type: 'section',
+        type: "section",
         text: {
-          type: 'mrkdwn',
+          type: "mrkdwn",
           text: `✅ *Modification applied by <@${modifiedBy}>*\nOrder \`${confirmedOrder.orderNumber}\`\n${summary}`,
         },
       },
@@ -708,7 +812,7 @@ async function handleModConfirm({ ack, body, client }) {
 async function handleModReject({ ack, body, client }) {
   await ack();
 
-  const channelId    = body.container.channel_id;
+  const channelId = body.container.channel_id;
   const modMessageTs = body.container.message_ts;
 
   modStateMap.delete(stateKey(channelId, modMessageTs));
@@ -716,9 +820,15 @@ async function handleModReject({ ack, body, client }) {
   await client.chat.update({
     channel: channelId,
     ts: modMessageTs,
-    text: 'Modification cancelled',
+    text: "Modification cancelled",
     blocks: [
-      { type: 'section', text: { type: 'mrkdwn', text: `✕ Modification cancelled by <@${body.user.id}>` } },
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `✕ Modification cancelled by <@${body.user.id}>`,
+        },
+      },
     ],
   });
 }
@@ -726,13 +836,13 @@ async function handleModReject({ ack, body, client }) {
 // ── Version command ───────────────────────────────────────────────────────────
 
 async function handleVersionCommand({ message, say }) {
-  const { version } = require('../../../package.json');
+  const { version } = require("../../package.json");
   await say({
     text: `Zupa Order Bot v${version}`,
     blocks: [
       {
-        type: 'section',
-        text: { type: 'mrkdwn', text: `*Zupa Order Bot*  \`v${version}\`` },
+        type: "section",
+        text: { type: "mrkdwn", text: `*Zupa Order Bot*  \`v${version}\`` },
       },
     ],
     thread_ts: message.thread_ts || message.ts,
