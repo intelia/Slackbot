@@ -627,6 +627,132 @@ function buildCitiesModal() {
   };
 }
 
+// ── /summary helpers ──────────────────────────────────────────────────────────
+
+function summaryTotals(orders) {
+  return {
+    grandTotal:    orders.reduce((s, o) => s + (o.orderTotal     || 0), 0),
+    itemsTotal:    orders.reduce((s, o) => s + (o.itemsSubtotal  || 0), 0),
+    deliveryTotal: orders.reduce((s, o) => s + (o.fulfillment?.fee || 0), 0),
+  };
+}
+
+// Shared per-order section blocks used by both the modal and the channel post.
+function buildOrderSections(orders, cap) {
+  const blocks = [];
+  const shown  = orders.slice(0, cap);
+
+  if (orders.length > cap) {
+    blocks.push({
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: `_Showing most recent ${cap} of ${orders.length} orders._` }],
+    });
+  }
+
+  for (const order of shown) {
+    const time = new Date(order._confirmedAt).toLocaleString('en-NG', {
+      timeZone: 'Africa/Lagos', hour: '2-digit', minute: '2-digit', hour12: true,
+    });
+
+    const customerParts = [
+      order.customer?.name,
+      order.customer?.phone,
+      order.customer?.instagram ? `@${order.customer.instagram.replace(/^@/, '')}` : null,
+    ].filter(Boolean);
+
+    const isPickup = order.fulfillment?.type === 'pickup';
+    const fulfillmentLine = isPickup
+      ? `📦 Pickup — ${order.fulfillment?.branch || 'Lekki'}  _(₦0)_`
+      : `🚚 ${order.fulfillment?.zoneName || order.fulfillment?.address || '—'}${order.fulfillment?.branch ? '  (' + order.fulfillment.branch + ')' : ''}  —  ${fmt(order.fulfillment?.fee)}`;
+
+    const itemLines  = (order.items || []).map(i => `  ×${i.qty}  ${i.productName}  ·  _${i.sizeName}_  —  ${fmt(i.lineTotal)}`);
+    const notesLine  = order.notes?.length > 0 ? `📌 _${order.notes.join(' · ')}_` : null;
+    const orderNum   = order.orderNumber ? `\`${order.orderNumber}\`` : '_no order #_';
+    const totalLine  = `Subtotal: *${fmt(order.itemsSubtotal)}*   Delivery: *${fmt(order.fulfillment?.fee || 0)}*   *Total: ${fmt(order.orderTotal)}*`;
+
+    const text = [
+      `*${orderNum}*  ·  ${time}`,
+      `👤 ${customerParts.join('  ·  ') || '—'}`,
+      fulfillmentLine,
+      ...itemLines,
+      notesLine,
+      totalLine,
+    ].filter(Boolean).join('\n');
+
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text } });
+    blocks.push({ type: 'divider' });
+  }
+
+  return blocks;
+}
+
+// ── /summary modal ────────────────────────────────────────────────────────────
+
+function buildSummaryModal(orders, dateLabel, channelId, userId, offsetDays) {
+  const meta = JSON.stringify({ channelId, userId, offsetDays: offsetDays || 0, dateLabel });
+
+  if (orders.length === 0) {
+    return {
+      type: 'modal',
+      callback_id: 'summary_modal',
+      private_metadata: meta,
+      title: { type: 'plain_text', text: 'Daily Summary' },
+      close: { type: 'plain_text', text: 'Close' },
+      blocks: [{
+        type: 'section',
+        text: { type: 'mrkdwn', text: `*No orders confirmed by you on ${dateLabel}.*\n_Confirm an order via /parse-order or by mentioning the bot._` },
+      }],
+    };
+  }
+
+  const { grandTotal, itemsTotal, deliveryTotal } = summaryTotals(orders);
+
+  return {
+    type: 'modal',
+    callback_id: 'summary_modal',
+    private_metadata: meta,
+    title: { type: 'plain_text', text: 'Daily Summary' },
+    submit: { type: 'plain_text', text: 'Paste to channel' },
+    close:  { type: 'plain_text', text: 'Close' },
+    blocks: [
+      {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: [
+            `📊 *${orders.length} order${orders.length !== 1 ? 's' : ''} confirmed — ${dateLabel}*`,
+            `Items: *${fmt(itemsTotal)}*   Delivery: *${fmt(deliveryTotal)}*   Grand total: *${fmt(grandTotal)}*`,
+          ].join('\n'),
+        },
+      },
+      { type: 'divider' },
+      ...buildOrderSections(orders, 45),
+    ],
+  };
+}
+
+// ── Channel summary post ──────────────────────────────────────────────────────
+
+function buildSummaryChannelBlocks(orders, dateLabel, userId) {
+  const { grandTotal, itemsTotal, deliveryTotal } = summaryTotals(orders);
+
+  return [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: [
+          `📊 *Daily Summary — <@${userId}>*`,
+          `_${dateLabel}_`,
+          `${orders.length} order${orders.length !== 1 ? 's' : ''}   Items: *${fmt(itemsTotal)}*   Delivery: *${fmt(deliveryTotal)}*   Grand total: *${fmt(grandTotal)}*`,
+        ].join('\n'),
+      },
+    },
+    { type: 'divider' },
+    ...buildOrderSections(orders, 20), // messages cap at 50 blocks; 2 + 2×20 = 42
+  ];
+}
+
 module.exports = {
   fmt,
   trunc,
@@ -637,4 +763,6 @@ module.exports = {
   buildModReviewBlocks,
   buildMenuModal,
   buildCitiesModal,
+  buildSummaryModal,
+  buildSummaryChannelBlocks,
 };

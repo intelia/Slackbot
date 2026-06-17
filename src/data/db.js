@@ -21,6 +21,18 @@ db.exec(`
   );
 `);
 
+// Migrate: add confirmed_by if this is an existing database without it
+try { db.exec('ALTER TABLE live_orders ADD COLUMN confirmed_by TEXT'); } catch (_) {}
+
+const LAGOS_OFFSET_MS = 60 * 60 * 1000; // Africa/Lagos = UTC+1
+
+function lagosDateBounds(offsetDays = 0) {
+  const localNow = Date.now() + LAGOS_OFFSET_MS + offsetDays * 86_400_000;
+  const localMidnight = localNow - (localNow % 86_400_000);
+  const startMs = localMidnight - LAGOS_OFFSET_MS;
+  return { startMs, endMs: startMs + 86_400_000 };
+}
+
 function hashRaw(rawMessage) {
   const normalized = (rawMessage || '').trim().replace(/\s+/g, ' ').toLowerCase();
   return crypto.createHash('sha256').update(normalized).digest('hex');
@@ -36,10 +48,17 @@ function recordOrder(rawMessage, orderNumber, customerName) {
   ).run(hashRaw(rawMessage), orderNumber || null, customerName || null, Date.now());
 }
 
-function saveConfirmedOrder(channelId, ts, order) {
+function saveConfirmedOrder(channelId, ts, order, confirmedBy) {
   db.prepare(
-    'INSERT OR REPLACE INTO live_orders (channel_ts, order_number, order_json, confirmed_at) VALUES (?, ?, ?, ?)'
-  ).run(`${channelId}:${ts}`, order.orderNumber || '', JSON.stringify(order), Date.now());
+    'INSERT OR REPLACE INTO live_orders (channel_ts, order_number, order_json, confirmed_at, confirmed_by) VALUES (?, ?, ?, ?, ?)'
+  ).run(`${channelId}:${ts}`, order.orderNumber || '', JSON.stringify(order), Date.now(), confirmedBy || null);
+}
+
+function getDailySummary(userId, offsetDays = 0) {
+  const { startMs, endMs } = lagosDateBounds(offsetDays);
+  return db.prepare(
+    'SELECT order_json, confirmed_at FROM live_orders WHERE confirmed_by = ? AND confirmed_at >= ? AND confirmed_at < ? ORDER BY confirmed_at ASC'
+  ).all(userId, startMs, endMs).map(r => ({ ...JSON.parse(r.order_json), _confirmedAt: r.confirmed_at }));
 }
 
 function getConfirmedOrder(channelId, ts) {
@@ -53,4 +72,4 @@ function updateConfirmedOrder(channelId, ts, order) {
   ).run(JSON.stringify(order), `${channelId}:${ts}`);
 }
 
-module.exports = { findDuplicate, recordOrder, saveConfirmedOrder, getConfirmedOrder, updateConfirmedOrder };
+module.exports = { findDuplicate, recordOrder, saveConfirmedOrder, getConfirmedOrder, updateConfirmedOrder, getDailySummary };

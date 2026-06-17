@@ -17,6 +17,7 @@ const {
   saveConfirmedOrder,
   getConfirmedOrder,
   updateConfirmedOrder,
+  getDailySummary,
 } = require("../data/db");
 const { parseModification } = require("../parser/mod-segmenter");
 const {
@@ -29,6 +30,8 @@ const {
   buildModReviewBlocks,
   buildMenuModal,
   buildCitiesModal,
+  buildSummaryModal,
+  buildSummaryChannelBlocks,
 } = require("./blocks");
 
 // ── In-memory order state ─────────────────────────────────────────────────────
@@ -544,7 +547,7 @@ async function executePush(order, confirmedBy, channelId, ts, client) {
   // For mention-based orders, save under the thread root ts (the @mention ts)
   // so that thread replies can look it up via event.thread_ts.
   // For /parse-order, ts IS the root message, so slackRootTs is not set.
-  saveConfirmedOrder(channelId, order.slackRootTs || ts, order);
+  saveConfirmedOrder(channelId, order.slackRootTs || ts, order, confirmedBy);
   deleteOrder(channelId, ts);
 
   const successText = [
@@ -1095,6 +1098,51 @@ async function handleVersionCommand({ message, say }) {
   });
 }
 
+// ── /summary command ──────────────────────────────────────────────────────────
+
+async function handleSummaryCommand({ command, ack, client }) {
+  await ack();
+
+  const userId = command.user_id;
+
+  // Support optional offset: "/summary -1" = yesterday, "/summary -2" = two days ago
+  const arg = (command.text || '').trim();
+  const offsetDays = /^-?\d+$/.test(arg) ? parseInt(arg, 10) : 0;
+
+  const orders = getDailySummary(userId, offsetDays);
+
+  const dateLabel = new Date(Date.now() + (3600_000 * (1 + offsetDays))).toLocaleDateString('en-NG', {
+    timeZone: 'Africa/Lagos',
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+
+  await client.views.open({
+    trigger_id: command.trigger_id,
+    view: buildSummaryModal(orders, dateLabel, command.channel_id, userId, offsetDays),
+  });
+}
+
+// ── /summary modal submit → paste to channel ──────────────────────────────────
+
+async function handleSummarySubmit({ ack, body, view, client }) {
+  await ack();
+
+  const meta = JSON.parse(view.private_metadata || '{}');
+  const { channelId, userId, offsetDays, dateLabel } = meta;
+  if (!channelId || !userId) return;
+
+  const orders = getDailySummary(userId, offsetDays || 0);
+
+  await client.chat.postMessage({
+    channel: channelId,
+    text: `Daily summary from <@${userId}> — ${dateLabel}`,
+    blocks: buildSummaryChannelBlocks(orders, dateLabel, userId),
+  });
+}
+
 module.exports = {
   handleParseOrderCommand,
   handleParseOrderSubmit,
@@ -1127,4 +1175,6 @@ module.exports = {
   handleCitiesCommand,
   handleCitiesSearchOptions,
   handleCitiesSelect,
+  handleSummaryCommand,
+  handleSummarySubmit,
 };

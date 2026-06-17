@@ -15,6 +15,7 @@ function createApp() {
   app.command('/parse-order', handlers.handleParseOrderCommand);
   app.command('/menu', handlers.handleMenuCommand);
   app.command('/cities', handlers.handleCitiesCommand);
+  app.command('/summary', handlers.handleSummaryCommand);
 
   // ── Events ──────────────────────────────────────────────────────────────────
   app.event('app_mention', handlers.handleMentionOrder);
@@ -25,6 +26,7 @@ function createApp() {
   app.view('parse_order_submit', handlers.handleParseOrderSubmit);
   app.view('product_search_submit', handlers.handleProductSearchSubmit);
   app.view('zone_picker_submit', handlers.handleZonePickerSubmit);
+  app.view('summary_modal', handlers.handleSummarySubmit);
 
   // ── External select options ─────────────────────────────────────────────────
   app.options('product_search_select', handlers.handleProductSearchOptions);
