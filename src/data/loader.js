@@ -55,7 +55,7 @@ function cleanProducts(raw) {
       continue;
     }
 
-    const entry = { name, normalized, sizes };
+    const entry = { name, normalized, category: (product.category || '').trim() || 'Other', sizes };
     seen.set(normalized, entry);
     cleaned.push(entry);
   }

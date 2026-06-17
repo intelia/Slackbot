@@ -28,10 +28,12 @@ class SystemProducts {
       const res = await this.makeRequest({ endpoint });
       if (!res) throw new Error("No response from makeRequest");
       const minifiedAllSystemProducts = res?.data?.map((sysp) => {
+        const category = (sysp.name || "").trim() || "Other";
         const result = [];
         sysp.products.forEach((prod) => {
           result.push({
             name: prod.name,
+            category,
             sizes: Object.keys(prod.sizes).map((s) => {
               if (prod.sizes[s].length !== 1) {
                 return null;

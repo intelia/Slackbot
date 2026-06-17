@@ -58,8 +58,10 @@ function createApp() {
   app.action('mod_confirm', handlers.handleModConfirm);
   app.action('mod_reject', handlers.handleModReject);
 
-  // Menu / cities browse (no-op ack — modals are read-only)
-  app.action('menu_search_select', handlers.handleMenuSelect);
+  // Menu live filter (fires on each keystroke, updates modal via views.update)
+  app.action('menu_search_input', handlers.handleMenuSearch);
+
+  // Cities browse (no-op ack — read-only modal)
   app.action('cities_search_select', handlers.handleCitiesSelect);
 
   return app;

@@ -889,6 +889,19 @@ async function handleMenuSearchOptions({ options, ack }) {
 
 async function handleMenuSelect({ ack }) { await ack(); }
 
+async function handleMenuSearch({ ack, body, action, client }) {
+  await ack();
+  const query = action.value || '';
+  try {
+    await client.views.update({
+      view_id: body.view.id,
+      view: buildMenuModal(query),
+    });
+  } catch (err) {
+    console.error('[menu] views.update failed:', err.message);
+  }
+}
+
 // ── /cities command ───────────────────────────────────────────────────────────
 
 async function handleCitiesCommand({ command, ack, client }) {
@@ -985,6 +998,7 @@ module.exports = {
   handleMenuCommand,
   handleMenuSearchOptions,
   handleMenuSelect,
+  handleMenuSearch,
   handleCitiesCommand,
   handleCitiesSearchOptions,
   handleCitiesSelect,

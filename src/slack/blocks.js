@@ -1,6 +1,7 @@
 'use strict';
 
 const { rideHailTiers, namedZones } = require('../parser/matcher');
+const store = require('../data/store');
 
 function fmt(n) {
   if (n == null) return '—';
@@ -458,28 +459,85 @@ function buildModReviewBlocks(mod, confirmedOrder) {
 
 // ── /menu modal ───────────────────────────────────────────────────────────────
 
-function buildMenuModal() {
+function buildMenuContent(query) {
+  const products = store.getProducts();
+  const q = (query || '').toLowerCase().trim();
+
+  const filtered = q
+    ? products.filter(p => (p.name || '').toLowerCase().includes(q))
+    : products;
+
+  if (filtered.length === 0) {
+    return [{
+      type: 'section',
+      text: { type: 'mrkdwn', text: `_No products found for "${trunc(query, 40)}"_` },
+    }];
+  }
+
+  // Group by category, preserving insertion order
+  const byCategory = new Map();
+  for (const p of filtered) {
+    const cat = (p.category || 'Products');
+    if (!byCategory.has(cat)) byCategory.set(cat, []);
+    byCategory.get(cat).push(p);
+  }
+
+  const blocks = [];
+
+  for (const [category, prods] of byCategory) {
+    if (blocks.length >= 93) break; // stay under 100-block modal limit
+
+    blocks.push({
+      type: 'header',
+      text: { type: 'plain_text', text: trunc(category, 150) },
+    });
+
+    // Pack up to 10 products per section (renders as 5-row × 2-col grid in Slack)
+    const CHUNK = 10;
+    for (let i = 0; i < prods.length; i += CHUNK) {
+      if (blocks.length >= 93) break;
+      const fields = prods.slice(i, i + CHUNK).map(p => {
+        const validSizes = (p.sizes || []).filter(Boolean);
+        const sizeText = validSizes.length > 0
+          ? validSizes.map(s => `${s.name}: *${fmt(s.price)}*`).join('  ·  ')
+          : '—';
+        return { type: 'mrkdwn', text: `*${trunc(p.name, 50)}*\n${sizeText}` };
+      });
+      blocks.push({ type: 'section', fields });
+    }
+
+    blocks.push({ type: 'divider' });
+  }
+
+  return blocks;
+}
+
+function buildMenuModal(query) {
+  const q = query || '';
   return {
     type: 'modal',
-    title: { type: 'plain_text', text: 'Menu' },
+    callback_id: 'menu_modal',
+    title: { type: 'plain_text', text: 'Gourmet Twist Menu' },
     close: { type: 'plain_text', text: 'Close' },
     blocks: [
       {
-        type: 'section',
-        text: { type: 'mrkdwn', text: 'Search any product to see its sizes and prices.' },
-      },
-      {
-        type: 'actions',
-        block_id: 'menu_search',
-        elements: [
-          {
-            type: 'external_select',
-            action_id: 'menu_search_select',
-            placeholder: { type: 'plain_text', text: 'Type to search… e.g. "banana", "choc cake"' },
-            min_query_length: 0,
+        type: 'input',
+        block_id: 'menu_search_block',
+        dispatch_action: true,
+        optional: true,
+        label: { type: 'plain_text', text: 'Search' },
+        element: {
+          type: 'plain_text_input',
+          action_id: 'menu_search_input',
+          placeholder: { type: 'plain_text', text: 'Filter products… e.g. "banana", "cake", "choc"' },
+          initial_value: q,
+          dispatch_action_config: {
+            trigger_actions_on: ['on_character_entered'],
           },
-        ],
+        },
       },
+      { type: 'divider' },
+      ...buildMenuContent(q),
     ],
   };
 }
