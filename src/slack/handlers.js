@@ -183,6 +183,7 @@ async function handleMentionOrder({ event, client }) {
   });
 
   const order = await parse(rawText);
+  order.slackRootTs = event.ts; // thread root = the mention ts, not the bot's reply ts
   const blocks = buildReviewOrderBlocks(order);
 
   if (loading.ts) {
@@ -538,7 +539,10 @@ async function executePush(order, confirmedBy, channelId, ts, client) {
     pushResult.orderNumber,
     order.customer?.name,
   );
-  saveConfirmedOrder(channelId, ts, order);
+  // For mention-based orders, save under the thread root ts (the @mention ts)
+  // so that thread replies can look it up via event.thread_ts.
+  // For /parse-order, ts IS the root message, so slackRootTs is not set.
+  saveConfirmedOrder(channelId, order.slackRootTs || ts, order);
   deleteOrder(channelId, ts);
 
   const successText = [
