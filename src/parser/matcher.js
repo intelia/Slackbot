@@ -68,6 +68,12 @@ function scoreProductMatch(phraseNorm, phraseTokens, product) {
   if (prodNorm.includes(phraseNorm)) return 0.9;
   const prodNormNB = prodNorm.replace(/\bBREAD\b/, '').replace(/\bCAKE\b/, '').trim();
   if (prodNormNB === phraseNorm || prodNormNB.includes(phraseNorm)) return 0.88;
+  // Compressed check: normalize() turns hyphens into spaces (e.g. "Za-yith" → "ZA YITH"),
+  // so a query like "zayi" won't be a substring of "ZA YITH YOGHURT".
+  // Removing spaces from both sides catches these cross-boundary prefix searches.
+  const prodCompact = prodNorm.replace(/\s+/g, '');
+  const phraseCompact = phraseNorm.replace(/\s+/g, '');
+  if (prodCompact.includes(phraseCompact)) return 0.87;
 
   if (phraseTokens.length === 0) return 0;
 

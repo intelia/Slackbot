@@ -401,7 +401,15 @@ async function handleProductSearchSubmit({ ack, body, view, client }) {
   if (!selectedSizeId) return;
 
   const order = getOrder(channelId, ts);
-  if (!order) return;
+  if (!order) {
+    console.error('[product-search-submit] order not found in state', { channelId, ts });
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: body.user.id,
+      text: '⚠️ Order state was lost (the bot may have restarted). Please re-paste the order message to start again.',
+    });
+    return;
+  }
 
   let found = null;
   for (const product of getProductIndex()) {
@@ -411,10 +419,26 @@ async function handleProductSearchSubmit({ ack, body, view, client }) {
       break;
     }
   }
-  if (!found) return;
+  if (!found) {
+    console.error('[product-search-submit] sizeId not found in product index', { selectedSizeId });
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: body.user.id,
+      text: '⚠️ That product could not be matched in the current catalogue (the list may have just refreshed). Please open the search again and re-select.',
+    });
+    return;
+  }
 
   const item = order.items.find((i) => i.index === itemIndex);
-  if (!item) return;
+  if (!item) {
+    console.error('[product-search-submit] item index not found in order', { itemIndex, items: order.items.map(i => i.index) });
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: body.user.id,
+      text: '⚠️ Could not locate that item in the order. Please try again.',
+    });
+    return;
+  }
 
   item.productName = found.product.name;
   item.sizeName = found.size.name;
