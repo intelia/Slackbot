@@ -55,7 +55,12 @@ function cleanProducts(raw) {
       continue;
     }
 
-    const entry = { name, normalized, category: (product.category || '').trim() || 'Other', sizes };
+    const entry = {
+      name,
+      normalized,
+      category: (product.category || "").trim() || "Other",
+      sizes,
+    };
     seen.set(normalized, entry);
     cleaned.push(entry);
   }
@@ -135,10 +140,10 @@ async function loadFromAPI() {
 
   const products = cleanProducts(rawProducts);
   const cities = cleanCities(rawCities);
-  console.log("================", {
-    // "products": products,
-    cities: JSON.stringify(cities, null, 2),
-  });
+  // console.log("================", {
+  //   // "products": products,
+  //   cities: cities,
+  // });
 
   if (!products || !cities) {
     throw new Error(

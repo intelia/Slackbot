@@ -1,9 +1,16 @@
 class SystemProducts {
   static apiUrl = process.env.ZUPA_PRODUCTS_API;
   static token = process.env.ZUPA_PRODUCTS_TOKEN;
-  static async makeRequest({ endpoint, method = "GET", body = "" }) {
+  static async makeRequest({
+    endpoint,
+    method = "GET",
+    body = "",
+    query = {},
+  }) {
     try {
-      const url = `${this.apiUrl}/${endpoint}`;
+      const urlQuery = new URLSearchParams(query);
+      const url = `${this.apiUrl}/${endpoint}?${urlQuery.toString()}`;
+      console.log("🚀 ~ SystemProducts ~ makeRequest ~ url:", url);
       const res = await fetch(url, {
         method,
         headers: {
@@ -12,6 +19,11 @@ class SystemProducts {
         },
         body: body || null,
       });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err?.message);
+      }
 
       const data = await res.json();
       return data;
@@ -25,7 +37,10 @@ class SystemProducts {
     try {
       const endpoint =
         "customer-requests/stores/8a7a28dc-b54d-4841-b949-efe60dbae709/products";
-      const res = await this.makeRequest({ endpoint });
+      const res = await this.makeRequest({
+        endpoint,
+        query: { includeSpecial: true },
+      });
       if (!res) throw new Error("No response from makeRequest");
       const minifiedAllSystemProducts = res?.data?.map((sysp) => {
         const category = (sysp.name || "").trim() || "Other";
@@ -48,6 +63,7 @@ class SystemProducts {
         });
         return result;
       });
+
       return minifiedAllSystemProducts.flat();
     } catch (error) {
       console.log(error.message);
