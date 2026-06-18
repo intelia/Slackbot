@@ -138,7 +138,10 @@ async function handleParseOrderSubmit({ ack, body, view, client }) {
       blocks: buildDuplicateWarningBlocks(existing),
     });
     if (warning.ts) {
-      pendingParseMap.set(stateKey(channelId, warning.ts), { channelId, rawText });
+      pendingParseMap.set(stateKey(channelId, warning.ts), {
+        channelId,
+        rawText,
+      });
     }
     return;
   }
@@ -146,14 +149,27 @@ async function handleParseOrderSubmit({ ack, body, view, client }) {
   const loading = await client.chat.postMessage({
     channel: channelId,
     text: "Parsing order…",
-    blocks: [{ type: "section", text: { type: "mrkdwn", text: ":hourglass_flowing_sand: *Parsing order…*" } }],
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: ":hourglass_flowing_sand: *Parsing order…*",
+        },
+      },
+    ],
   });
 
   const order = await parse(rawText);
   const blocks = buildReviewOrderBlocks(order);
 
   if (loading.ts) {
-    await client.chat.update({ channel: channelId, ts: loading.ts, text: "Review Order", blocks });
+    await client.chat.update({
+      channel: channelId,
+      ts: loading.ts,
+      text: "Review Order",
+      blocks,
+    });
     saveOrder(channelId, loading.ts, order);
   }
 }
@@ -175,7 +191,11 @@ async function handleMentionOrder({ event, client }) {
       blocks: buildDuplicateWarningBlocks(existing),
     });
     if (warning.ts) {
-      pendingParseMap.set(stateKey(channelId, warning.ts), { channelId, rawText, threadTs: event.ts });
+      pendingParseMap.set(stateKey(channelId, warning.ts), {
+        channelId,
+        rawText,
+        threadTs: event.ts,
+      });
     }
     return;
   }
@@ -184,7 +204,15 @@ async function handleMentionOrder({ event, client }) {
     channel: channelId,
     thread_ts: event.ts,
     text: "Parsing order…",
-    blocks: [{ type: "section", text: { type: "mrkdwn", text: ":hourglass_flowing_sand: *Parsing order…*" } }],
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: ":hourglass_flowing_sand: *Parsing order…*",
+        },
+      },
+    ],
   });
 
   const order = await parse(rawText);
@@ -402,11 +430,14 @@ async function handleProductSearchSubmit({ ack, body, view, client }) {
 
   const order = getOrder(channelId, ts);
   if (!order) {
-    console.error('[product-search-submit] order not found in state', { channelId, ts });
+    console.error("[product-search-submit] order not found in state", {
+      channelId,
+      ts,
+    });
     await client.chat.postEphemeral({
       channel: channelId,
       user: body.user.id,
-      text: '⚠️ Order state was lost (the bot may have restarted). Please re-paste the order message to start again.',
+      text: "⚠️ Order state was lost (the bot may have restarted). Please re-paste the order message to start again.",
     });
     return;
   }
@@ -420,22 +451,27 @@ async function handleProductSearchSubmit({ ack, body, view, client }) {
     }
   }
   if (!found) {
-    console.error('[product-search-submit] sizeId not found in product index', { selectedSizeId });
+    console.error("[product-search-submit] sizeId not found in product index", {
+      selectedSizeId,
+    });
     await client.chat.postEphemeral({
       channel: channelId,
       user: body.user.id,
-      text: '⚠️ That product could not be matched in the current catalogue (the list may have just refreshed). Please open the search again and re-select.',
+      text: "⚠️ That product could not be matched in the current catalogue (the list may have just refreshed). Please open the search again and re-select.",
     });
     return;
   }
 
   const item = order.items.find((i) => i.index === itemIndex);
   if (!item) {
-    console.error('[product-search-submit] item index not found in order', { itemIndex, items: order.items.map(i => i.index) });
+    console.error("[product-search-submit] item index not found in order", {
+      itemIndex,
+      items: order.items.map((i) => i.index),
+    });
     await client.chat.postEphemeral({
       channel: channelId,
       user: body.user.id,
-      text: '⚠️ Could not locate that item in the order. Please try again.',
+      text: "⚠️ Could not locate that item in the order. Please try again.",
     });
     return;
   }
@@ -633,9 +669,9 @@ async function handleConfirmOrder({ ack, body, action, client }) {
 async function handleParseAnyway({ ack, body, client }) {
   await ack();
 
-  const channelId  = body.container.channel_id;
-  const warningTs  = body.container.message_ts;
-  const pending    = pendingParseMap.get(stateKey(channelId, warningTs));
+  const channelId = body.container.channel_id;
+  const warningTs = body.container.message_ts;
+  const pending = pendingParseMap.get(stateKey(channelId, warningTs));
   if (!pending) return;
   pendingParseMap.delete(stateKey(channelId, warningTs));
 
@@ -643,13 +679,26 @@ async function handleParseAnyway({ ack, body, client }) {
     channel: channelId,
     ts: warningTs,
     text: "Parsing order…",
-    blocks: [{ type: "section", text: { type: "mrkdwn", text: ":hourglass_flowing_sand: *Parsing order…*" } }],
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: ":hourglass_flowing_sand: *Parsing order…*",
+        },
+      },
+    ],
   });
 
-  const order  = await parse(pending.rawText);
+  const order = await parse(pending.rawText);
   const blocks = buildReviewOrderBlocks(order);
 
-  await client.chat.update({ channel: channelId, ts: warningTs, text: "Review Order", blocks });
+  await client.chat.update({
+    channel: channelId,
+    ts: warningTs,
+    text: "Review Order",
+    blocks,
+  });
   saveOrder(channelId, warningTs, order);
 }
 
@@ -666,7 +715,12 @@ async function handleCancelParse({ ack, body, client }) {
     channel: channelId,
     ts: warningTs,
     text: "Duplicate dismissed",
-    blocks: [{ type: "section", text: { type: "mrkdwn", text: "✕ Duplicate order dismissed." } }],
+    blocks: [
+      {
+        type: "section",
+        text: { type: "mrkdwn", text: "✕ Duplicate order dismissed." },
+      },
+    ],
   });
 }
 
@@ -813,7 +867,7 @@ async function handleModConfirm({ ack, body, client }) {
   modStateMap.delete(stateKey(channelId, modMessageTs));
 
   // Apply changes to the stored order so future modifications have accurate state
-  if (mod.newName)  confirmedOrder.customer.name  = mod.newName;
+  if (mod.newName) confirmedOrder.customer.name = mod.newName;
   if (mod.newPhone) confirmedOrder.customer.phone = mod.newPhone;
   if (mod.addItems.length > 0) confirmedOrder.items.push(...mod.addItems);
   if (mod.removeItems.length > 0) {
@@ -831,12 +885,25 @@ async function handleModConfirm({ ack, body, client }) {
   }
   updateConfirmedOrder(channelId, threadTs, confirmedOrder);
 
-  const nameLine    = mod.newName  ? `  👤  Name: ${mod.newName}`  : null;
-  const phoneLine   = mod.newPhone ? `  📱  Phone: ${mod.newPhone}` : null;
-  const addedLines  = mod.addItems.map((i) => `  ➕  ${i.productName} · ${i.sizeName} ×${i.qty} — ${fmt(i.lineTotal)}`);
-  const removedLines = mod.removeItems.map((i) => `  ➖  ${i.productName} · ${i.sizeName} ×${i.qty}`);
-  const addressLine = mod.newZoneId ? `  📍  ${confirmedOrder.fulfillment.zoneName}` : null;
-  const summary = [nameLine, phoneLine, ...addedLines, ...removedLines, addressLine]
+  const nameLine = mod.newName ? `  👤  Name: ${mod.newName}` : null;
+  const phoneLine = mod.newPhone ? `  📱  Phone: ${mod.newPhone}` : null;
+  const addedLines = mod.addItems.map(
+    (i) =>
+      `  ➕  ${i.productName} · ${i.sizeName} ×${i.qty} — ${fmt(i.lineTotal)}`,
+  );
+  const removedLines = mod.removeItems.map(
+    (i) => `  ➖  ${i.productName} · ${i.sizeName} ×${i.qty}`,
+  );
+  const addressLine = mod.newZoneId
+    ? `  📍  ${confirmedOrder.fulfillment.zoneName}`
+    : null;
+  const summary = [
+    nameLine,
+    phoneLine,
+    ...addedLines,
+    ...removedLines,
+    addressLine,
+  ]
     .filter(Boolean)
     .join("\n");
 
@@ -888,7 +955,7 @@ async function handleModAddPick({ ack, body, client }) {
   await ack();
   const action = body.actions[0];
   const sizeId = action.selected_option.value;
-  const idx = parseInt((action.block_id || '').split('_').pop(), 10);
+  const idx = parseInt((action.block_id || "").split("_").pop(), 10);
 
   const channelId = body.container.channel_id;
   const modMessageTs = body.container.message_ts;
@@ -903,16 +970,16 @@ async function handleModAddPick({ ack, body, client }) {
   modState.mod.addItems[idx] = {
     ...item,
     productName: picked.productName,
-    sizeName:    picked.sizeName,
-    sizeId:      picked.sizeId,
-    unitPrice:   picked.price,
-    lineTotal:   picked.price * item.qty,
+    sizeName: picked.sizeName,
+    sizeId: picked.sizeId,
+    unitPrice: picked.price,
+    lineTotal: picked.price * item.qty,
   };
 
   await client.chat.update({
     channel: channelId,
     ts: modMessageTs,
-    text: 'Order Modification',
+    text: "Order Modification",
     blocks: buildModReviewBlocks(modState.mod, modState.confirmedOrder),
   });
 }
@@ -923,7 +990,7 @@ async function handleModAddSearch({ ack, body, client }) {
   await ack();
   const action = body.actions[0];
   const sizeId = action.selected_option.value;
-  const idx = parseInt((action.block_id || '').split('_').pop(), 10);
+  const idx = parseInt((action.block_id || "").split("_").pop(), 10);
 
   const channelId = body.container.channel_id;
   const modMessageTs = body.container.message_ts;
@@ -934,18 +1001,31 @@ async function handleModAddSearch({ ack, body, client }) {
   let found = null;
   for (const p of getProductIndex()) {
     const s = (p.sizes || []).find((sz) => sz && sz.id === sizeId);
-    if (s) { found = { productName: p.name, sizeName: s.name, sizeId: s.id, unitPrice: s.price }; break; }
+    if (s) {
+      found = {
+        productName: p.name,
+        sizeName: s.name,
+        sizeId: s.id,
+        unitPrice: s.price,
+      };
+      break;
+    }
   }
   if (!found) return;
 
   // Move from unresolved to addItems
   modState.mod.unresolvedAdditions.splice(idx, 1);
-  modState.mod.addItems.push({ ...found, qty: 1, lineTotal: found.unitPrice, candidates: [] });
+  modState.mod.addItems.push({
+    ...found,
+    qty: 1,
+    lineTotal: found.unitPrice,
+    candidates: [],
+  });
 
   await client.chat.update({
     channel: channelId,
     ts: modMessageTs,
-    text: 'Order Modification',
+    text: "Order Modification",
     blocks: buildModReviewBlocks(modState.mod, modState.confirmedOrder),
   });
 }
@@ -956,7 +1036,7 @@ async function handleModRemovePick({ ack, body, client }) {
   await ack();
   const action = body.actions[0];
   const sizeId = action.selected_option.value;
-  const idx = parseInt((action.block_id || '').split('_').pop(), 10);
+  const idx = parseInt((action.block_id || "").split("_").pop(), 10);
 
   const channelId = body.container.channel_id;
   const modMessageTs = body.container.message_ts;
@@ -973,7 +1053,7 @@ async function handleModRemovePick({ ack, body, client }) {
   await client.chat.update({
     channel: channelId,
     ts: modMessageTs,
-    text: 'Order Modification',
+    text: "Order Modification",
     blocks: buildModReviewBlocks(modState.mod, modState.confirmedOrder),
   });
 }
@@ -993,15 +1073,15 @@ async function handleModZoneSelect({ ack, body, client }) {
   const zone = getZoneById(zoneId);
   if (!zone) return;
 
-  modState.mod.newZoneId   = zone.id;
+  modState.mod.newZoneId = zone.id;
   modState.mod.newZoneName = zone.name;
-  modState.mod.newBranch   = zone.branch;
-  modState.mod.newFee      = zone.price;
+  modState.mod.newBranch = zone.branch;
+  modState.mod.newFee = zone.price;
 
   await client.chat.update({
     channel: channelId,
     ts: modMessageTs,
-    text: 'Order Modification',
+    text: "Order Modification",
     blocks: buildModReviewBlocks(modState.mod, modState.confirmedOrder),
   });
 }
@@ -1010,7 +1090,10 @@ async function handleModZoneSelect({ ack, body, client }) {
 
 async function handleMenuCommand({ command, ack, client }) {
   await ack();
-  await client.views.open({ trigger_id: command.trigger_id, view: buildMenuModal() });
+  await client.views.open({
+    trigger_id: command.trigger_id,
+    view: buildMenuModal(),
+  });
 }
 
 async function handleMenuSearchOptions({ options, ack }) {
@@ -1021,7 +1104,12 @@ async function handleMenuSearchOptions({ options, ack }) {
       .slice()
       .sort((a, b) => a.name.localeCompare(b.name))
       .flatMap((p) =>
-        p.sizes.map((s) => ({ productName: p.name, sizeName: s.name, sizeId: s.id, price: s.price })),
+        p.sizes.map((s) => ({
+          productName: p.name,
+          sizeName: s.name,
+          sizeId: s.id,
+          price: s.price,
+        })),
       )
       .slice(0, 100);
   } else {
@@ -1029,24 +1117,29 @@ async function handleMenuSearchOptions({ options, ack }) {
   }
   await ack({
     options: candidates.map((c) => ({
-      text: { type: "plain_text", text: trunc(`${c.productName} · ${c.sizeName} — ${fmt(c.price)}`, 75) },
+      text: {
+        type: "plain_text",
+        text: trunc(`${c.productName} · ${c.sizeName} — ${fmt(c.price)}`, 75),
+      },
       value: c.sizeId,
     })),
   });
 }
 
-async function handleMenuSelect({ ack }) { await ack(); }
+async function handleMenuSelect({ ack }) {
+  await ack();
+}
 
 async function handleMenuSearch({ ack, body, action, client }) {
   await ack();
-  const query = action.value || '';
+  const query = action.value || "";
   try {
     await client.views.update({
       view_id: body.view.id,
       view: buildMenuModal(query),
     });
   } catch (err) {
-    console.error('[menu] views.update failed:', err.message);
+    console.error("[menu] views.update failed:", err.message);
   }
 }
 
@@ -1054,7 +1147,10 @@ async function handleMenuSearch({ ack, body, action, client }) {
 
 async function handleCitiesCommand({ command, ack, client }) {
   await ack();
-  await client.views.open({ trigger_id: command.trigger_id, view: buildCitiesModal() });
+  await client.views.open({
+    trigger_id: command.trigger_id,
+    view: buildCitiesModal(),
+  });
 }
 
 async function handleCitiesSearchOptions({ options, ack }) {
@@ -1081,14 +1177,17 @@ async function handleCitiesSearchOptions({ options, ack }) {
         else {
           let matches = 0;
           for (const t of qTokens) {
-            if (zn.includes(t) || zn.split(" ").some((zt) => zt.startsWith(t))) matches++;
+            if (zn.includes(t) || zn.split(" ").some((zt) => zt.startsWith(t)))
+              matches++;
           }
           score = qTokens.length > 0 ? matches / qTokens.length : 0;
         }
         return { zone: z, score };
       })
       .filter((r) => r.score > 0)
-      .sort((a, b) => b.score - a.score || a.zone.name.localeCompare(b.zone.name))
+      .sort(
+        (a, b) => b.score - a.score || a.zone.name.localeCompare(b.zone.name),
+      )
       .slice(0, 100)
       .map((r) => r.zone);
   }
@@ -1097,14 +1196,19 @@ async function handleCitiesSearchOptions({ options, ack }) {
     options: results.map((z) => ({
       text: {
         type: "plain_text",
-        text: trunc(`${z.name} · ${z.branch || "Ride-hail"} — ${fmt(z.price)}`, 75),
+        text: trunc(
+          `${z.name} · ${z.branch || "Ride-hail"} — ${fmt(z.price)}`,
+          75,
+        ),
       },
       value: z.id,
     })),
   });
 }
 
-async function handleCitiesSelect({ ack }) { await ack(); }
+async function handleCitiesSelect({ ack }) {
+  await ack();
+}
 
 // ── Version command ───────────────────────────────────────────────────────────
 
@@ -1128,25 +1232,38 @@ async function handleSummaryCommand({ command, ack, client }) {
   await ack();
 
   const userId = command.user_id;
+  const channelId = command.channel_id;
 
-  // Support optional offset: "/summary -1" = yesterday, "/summary -2" = two days ago
-  const arg = (command.text || '').trim();
-  const offsetDays = /^-?\d+$/.test(arg) ? parseInt(arg, 10) : 0;
+  try {
+    const arg = (command.text || "").trim();
+    const offsetDays = /^-?\d+$/.test(arg) ? parseInt(arg, 10) : 0;
 
-  const orders = getDailySummary(userId, offsetDays);
+    const orders = getDailySummary(userId, offsetDays);
 
-  const dateLabel = new Date(Date.now() + (3600_000 * (1 + offsetDays))).toLocaleDateString('en-NG', {
-    timeZone: 'Africa/Lagos',
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+    const dateLabel = new Date(
+      Date.now() + 3600_000 * (1 + offsetDays),
+    ).toLocaleDateString("en-NG", {
+      timeZone: "Africa/Lagos",
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
 
-  await client.views.open({
-    trigger_id: command.trigger_id,
-    view: buildSummaryModal(orders, dateLabel, command.channel_id, userId, offsetDays),
-  });
+    await client.views.open({
+      trigger_id: command.trigger_id,
+      view: buildSummaryModal(orders, dateLabel, channelId, userId, offsetDays),
+    });
+  } catch (err) {
+    console.error("[handleSummaryCommand] Error:", err);
+    await client.chat
+      .postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: `❌ Could not open summary: ${err.message}`,
+      })
+      .catch(() => {});
+  }
 }
 
 // ── /summary modal submit → paste to channel ──────────────────────────────────
@@ -1154,7 +1271,7 @@ async function handleSummaryCommand({ command, ack, client }) {
 async function handleSummarySubmit({ ack, body, view, client }) {
   await ack();
 
-  const meta = JSON.parse(view.private_metadata || '{}');
+  const meta = JSON.parse(view.private_metadata || "{}");
   const { channelId, userId, offsetDays, dateLabel } = meta;
   if (!channelId || !userId) return;
 

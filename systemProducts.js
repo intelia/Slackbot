@@ -21,15 +21,15 @@ class SystemProducts {
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err?.message);
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.detail || err?.message || `Request failed (HTTP ${res.status})`);
       }
 
       const data = await res.json();
       return data;
     } catch (error) {
       console.log("Error in makeRequest", error.message);
-      return;
+      throw error;
     }
   }
 
