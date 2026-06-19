@@ -50,13 +50,12 @@ class SystemProducts {
             name: prod.name,
             category,
             sizes: Object.keys(prod.sizes).map((s) => {
-              if (prod.sizes[s].length !== 1) {
-                return null;
-              }
+              const skus = prod.sizes[s];
+              if (!skus || skus.length === 0) return null;
               return {
                 name: s?.trim(),
-                id: prod.sizes[s][0].id,
-                price: prod.sizes[s][0].unitPrice,
+                id: skus[0].id,
+                price: skus[0].unitPrice,
               };
             }),
           });
