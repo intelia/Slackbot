@@ -1094,6 +1094,8 @@ async function handleModZoneSelect({ ack, body, client }) {
 // ── /menu command ─────────────────────────────────────────────────────────────
 
 async function handleMenuCommand({ command, ack, client }) {
+  console.log(" =========== \n\n", command, `\n\n`);
+
   await ack();
   await client.views.open({
     trigger_id: command.trigger_id,

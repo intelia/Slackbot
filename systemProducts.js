@@ -1,6 +1,7 @@
 class SystemProducts {
   static apiUrl = process.env.ZUPA_PRODUCTS_API;
   static token = process.env.ZUPA_PRODUCTS_TOKEN;
+
   static async makeRequest({
     endpoint,
     method = "GET",
@@ -22,13 +23,15 @@ class SystemProducts {
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err?.detail || err?.message || `Request failed (HTTP ${res.status})`);
+        throw new Error(
+          err?.detail || err?.message || `Request failed (HTTP ${res.status})`,
+        );
       }
 
       const data = await res.json();
       return data;
     } catch (error) {
-      console.log("Error in makeRequest", error.message);
+      console.log(`Error in makeRequest ${url}`, error.message);
       throw error;
     }
   }

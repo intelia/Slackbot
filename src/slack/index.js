@@ -15,7 +15,7 @@ function createApp() {
   app.command("/parse-order", handlers.handleParseOrderCommand);
   app.command("/menu", handlers.handleMenuCommand);
   app.command("/cities", handlers.handleCitiesCommand);
-  app.command("/history", handlers.handleSummaryCommand);
+  app.command("/my-orders", handlers.handleSummaryCommand);
 
   // ── Events ──────────────────────────────────────────────────────────────────
   app.event("app_mention", handlers.handleMentionOrder);
