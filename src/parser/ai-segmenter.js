@@ -34,16 +34,19 @@ Extraction rules:
 - For delivery: extract the address/area text verbatim into address field (do NOT resolve to zone names).
 - statedFee: if customer writes "Delivery 4000" or "delivery fee: ₦3,500", extract as plain number; else null.
 - If a name appears in parentheses after the total (e.g. "Total....12,300(Oluseye)"), treat it as the customer name.
+- scheduledDate: if the customer mentions a future delivery/pickup date (e.g. "deliver Friday", "for Saturday 21st", "I need this on 25 June", "schedule for next Monday", "tomorrow"), resolve it to YYYY-MM-DD format using today's date as the reference. Return null for same-day or unspecified orders.
 - Notes: special instructions like "please prioritize", "urgent", "extra spicy", "no sugar". Short noise phrases (greetings, "hi", "Hello", "eye -", single orphan letters) go into notes only if they could be instructions; otherwise ignore.
 - Ignore lines that are clearly noise: orphan letters/characters, "eye -" without context, greetings with no content.
 
 Return ONLY the JSON object matching the schema. Do not include explanation.`;
 
 function buildSystemPrompt() {
+  const todayLagos = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }); // YYYY-MM-DD
   const products = store.getProducts();
-  if (!products || products.length === 0) return BASE_SYSTEM_PROMPT;
-  const catalogueList = products.map(p => p.name).join('\n');
-  return `${BASE_SYSTEM_PROMPT}\n\nCATALOGUE (exact product names — match customer text to the closest name here):\n${catalogueList}`;
+  const cataloguePart = products && products.length > 0
+    ? `\n\nCATALOGUE (exact product names — match customer text to the closest name here):\n${products.map(p => p.name).join('\n')}`
+    : '';
+  return `${BASE_SYSTEM_PROMPT}\n\nToday's date (Lagos time): ${todayLagos}${cataloguePart}`;
 }
 
 // OpenAI structured-output schema (strict: true compatible)
@@ -91,10 +94,11 @@ const RESPONSE_FORMAT = {
             additionalProperties: false,
           },
         },
-        statedTotal: { anyOf: [{ type: 'number' }, { type: 'null' }] },
-        notes:       { type: 'array', items: { type: 'string' } },
+        statedTotal:   { anyOf: [{ type: 'number' }, { type: 'null' }] },
+        scheduledDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        notes:         { type: 'array', items: { type: 'string' } },
       },
-      required: ['customer', 'fulfillment', 'itemLines', 'statedTotal', 'notes'],
+      required: ['customer', 'fulfillment', 'itemLines', 'statedTotal', 'scheduledDate', 'notes'],
       additionalProperties: false,
     },
   },

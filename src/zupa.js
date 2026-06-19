@@ -36,6 +36,7 @@ function buildZupaPayload(order) {
         quantity: item.qty,
         price: item.unitPrice,
       })),
+      ...(order.scheduledDate && { deliveryDate: order.scheduledDate }),
     },
     address: {
       deliveryAddress: isPickup ? null : order.fulfillment.address || null,
@@ -98,6 +99,10 @@ function buildModPayload(confirmedOrder, mod) {
       deliveryAddress: mod.newAddress,
       cityId: mod.newZoneId,
     };
+  }
+
+  if (mod.newScheduledDate) {
+    payload.deliveryDate = mod.newScheduledDate;
   }
 
   return payload;

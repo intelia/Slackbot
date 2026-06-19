@@ -181,6 +181,17 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
       value: 'change',
     },
   });
+
+  if (order.scheduledDate) {
+    const humanDate = new Date(order.scheduledDate + 'T12:00:00').toLocaleDateString('en-NG', {
+      timeZone: 'Africa/Lagos', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    });
+    blocks.push({
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: `📅  *Scheduled delivery:*  ${humanDate}` }],
+    });
+  }
+
   blocks.push({ type: 'divider' });
 
   // Items
@@ -474,6 +485,20 @@ function buildModReviewBlocks(mod, confirmedOrder) {
     blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*UNRESOLVED REMOVALS:*\n${lines.join('\n')}` } });
   }
 
+  // ── Scheduled date change ─────────────────────────────────────────────────
+  if (mod.newScheduledDate) {
+    const humanDate = new Date(mod.newScheduledDate + 'T12:00:00').toLocaleDateString('en-NG', {
+      timeZone: 'Africa/Lagos', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    });
+    const prev = confirmedOrder.scheduledDate
+      ? new Date(confirmedOrder.scheduledDate + 'T12:00:00').toLocaleDateString('en-NG', { timeZone: 'Africa/Lagos', day: 'numeric', month: 'short', year: 'numeric' })
+      : 'same day';
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: `📅  *DELIVERY DATE*  _(was: ${prev})_\n  →  *${humanDate}*` },
+    });
+  }
+
   // ── Zone change — always show picker when an address was detected ─────────
   if (mod.newAddress) {
     const prev = confirmedOrder.fulfillment?.zoneName || confirmedOrder.fulfillment?.address || '?';
@@ -495,7 +520,7 @@ function buildModReviewBlocks(mod, confirmedOrder) {
 
   blocks.push({ type: 'divider' });
 
-  const canApply = mod.addItems.length > 0 || mod.removeItems.length > 0 || mod.newZoneId || mod.newName || mod.newPhone;
+  const canApply = mod.addItems.length > 0 || mod.removeItems.length > 0 || mod.newZoneId || mod.newName || mod.newPhone || mod.newScheduledDate;
   const hasAnyChange = canApply || mod.unresolvedAdditions.length > 0 || (mod.newAddress && !mod.newZoneId);
 
   if (hasAnyChange) {
@@ -670,10 +695,15 @@ function buildOrderSections(orders, cap) {
     const orderNum   = order.orderNumber ? `\`${order.orderNumber}\`` : '_no order #_';
     const totalLine  = `Subtotal: *${fmt(order.itemsSubtotal)}*   Delivery: *${fmt(order.fulfillment?.fee || 0)}*   *Total: ${fmt(order.orderTotal)}*`;
 
+    const scheduledLine = order.scheduledDate
+      ? `📅 Scheduled: ${new Date(order.scheduledDate + 'T12:00:00').toLocaleDateString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short' })}`
+      : null;
+
     const text = [
       `*${orderNum}*  ·  ${time}`,
       `👤 ${customerParts.join('  ·  ') || '—'}`,
       fulfillmentLine,
+      scheduledLine,
       ...itemLines,
       notesLine,
       totalLine,

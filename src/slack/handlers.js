@@ -883,6 +883,7 @@ async function handleModConfirm({ ack, body, client }) {
     confirmedOrder.fulfillment.fee = mod.newFee;
     confirmedOrder.fulfillment.address = mod.newAddress;
   }
+  if (mod.newScheduledDate) confirmedOrder.scheduledDate = mod.newScheduledDate;
   updateConfirmedOrder(channelId, threadTs, confirmedOrder);
 
   const nameLine = mod.newName ? `  👤  Name: ${mod.newName}` : null;
@@ -897,12 +898,16 @@ async function handleModConfirm({ ack, body, client }) {
   const addressLine = mod.newZoneId
     ? `  📍  ${confirmedOrder.fulfillment.zoneName}`
     : null;
+  const dateLine = mod.newScheduledDate
+    ? `  📅  Delivery date: ${mod.newScheduledDate}`
+    : null;
   const summary = [
     nameLine,
     phoneLine,
     ...addedLines,
     ...removedLines,
     addressLine,
+    dateLine,
   ]
     .filter(Boolean)
     .join("\n");
@@ -1229,6 +1234,7 @@ async function handleVersionCommand({ message, say }) {
 // ── /summary command ──────────────────────────────────────────────────────────
 
 async function handleSummaryCommand({ command, ack, client }) {
+  console.log(" =========== \n\n", command, `\n\n`);
   await ack();
 
   const userId = command.user_id;

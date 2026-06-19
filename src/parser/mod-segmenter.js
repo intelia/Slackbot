@@ -16,10 +16,12 @@ function getClient() {
 const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
 function buildSystemPrompt(existingItems) {
-  const catalogue = store.getProducts().map(p => p.name).join('\n');
-  const itemList  = existingItems.map(i => `- ${i.productName} · ${i.sizeName} ×${i.qty}`).join('\n');
+  const todayLagos = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }); // YYYY-MM-DD
+  const catalogue  = store.getProducts().map(p => p.name).join('\n');
+  const itemList   = existingItems.map(i => `- ${i.productName} · ${i.sizeName} ×${i.qty}`).join('\n');
   return `You are an order modification assistant for Gourmet Twist, a bakery in Lagos, Nigeria.
 The user is replying in a confirmed-order thread to request changes.
+Today's date (Lagos time): ${todayLagos}
 
 CURRENT ORDER ITEMS:
 ${itemList}
@@ -33,6 +35,7 @@ Parse what the user wants to change:
 - newAddress: new delivery area/address verbatim if the user wants to change it, else null.
 - newName: new customer name if the user wants to change it, else null.
 - newPhone: new customer phone number if the user wants to change it, else null.
+- newScheduledDate: if the user wants to set or change the delivery/pickup date (e.g. "change delivery to Friday", "reschedule to 25 June", "deliver tomorrow"), resolve to YYYY-MM-DD using today's date as reference. Return null if no date change is requested.
 
 Return ONLY the JSON object matching the schema.`;
 }
@@ -68,11 +71,12 @@ const RESPONSE_FORMAT = {
             additionalProperties: false,
           },
         },
-        newAddress: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-        newName:    { anyOf: [{ type: 'string' }, { type: 'null' }] },
-        newPhone:   { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        newAddress:       { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        newName:          { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        newPhone:         { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        newScheduledDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
       },
-      required: ['addItems', 'removeItems', 'newAddress', 'newName', 'newPhone'],
+      required: ['addItems', 'removeItems', 'newAddress', 'newName', 'newPhone', 'newScheduledDate'],
       additionalProperties: false,
     },
   },
@@ -150,13 +154,14 @@ function resolve(seg, confirmedOrder) {
     removeItems,
     unresolvedAdditions,
     unresolvedRemovals,
-    newAddress:  seg.newAddress || null,
+    newAddress:       seg.newAddress       || null,
     newZoneId,
     newZoneName,
     newBranch,
     newFee,
-    newName:  seg.newName  || null,
-    newPhone: seg.newPhone || null,
+    newName:          seg.newName          || null,
+    newPhone:         seg.newPhone         || null,
+    newScheduledDate: seg.newScheduledDate || null,
   };
 }
 

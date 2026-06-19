@@ -156,6 +156,7 @@ async function parse(rawMessage) {
     fulfillment: updatedFulfillment,
     items,
     statedTotal: seg.statedTotal,
+    scheduledDate: seg.scheduledDate || null,
     itemsSubtotal,
     orderTotal,
     reconciliation,
