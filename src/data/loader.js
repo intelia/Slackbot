@@ -45,9 +45,11 @@ function cleanProducts(raw) {
 
     if (sizes.length === 0) continue;
 
+    const category = (product.category || "").trim() || "Other";
     const normalized = normalizeStr(name);
-    if (seen.has(normalized)) {
-      const existing = seen.get(normalized);
+    const dedupKey = `${normalized}|${normalizeStr(category)}`;
+    if (seen.has(dedupKey)) {
+      const existing = seen.get(dedupKey);
       if (sizes.length > existing.sizes.length) {
         existing.sizes = sizes;
         existing.name = name;
@@ -55,13 +57,8 @@ function cleanProducts(raw) {
       continue;
     }
 
-    const entry = {
-      name,
-      normalized,
-      category: (product.category || "").trim() || "Other",
-      sizes,
-    };
-    seen.set(normalized, entry);
+    const entry = { name, normalized, category, sizes };
+    seen.set(dedupKey, entry);
     cleaned.push(entry);
   }
 

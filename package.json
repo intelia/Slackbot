@@ -1,12 +1,13 @@
 {
   "name": "zupa-order",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "AI order parser for Gourmet Twist — WhatsApp/IG DM to Zupa via Slack",
   "license": "ISC",
   "type": "commonjs",
   "main": "app.js",
   "scripts": {
     "clean-data": "node scripts/clean-data.js",
+    "dump-data": "node scripts/dump-data.js",
     "start": "node app.js",
     "dev": "node --watch app.js"
   },
