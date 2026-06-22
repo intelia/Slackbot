@@ -111,6 +111,13 @@ function buildModPayload(confirmedOrder, mod) {
     payload.deliveryDate = mod.newScheduledDate;
   }
 
+  if (mod.newRecipient && (mod.newRecipient.name || mod.newRecipient.phone)) {
+    payload.recipient = {
+      name: mod.newRecipient.name || null,
+      phoneNumber: formatPhone(mod.newRecipient.phone),
+    };
+  }
+
   return payload;
 }
 

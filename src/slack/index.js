@@ -57,6 +57,10 @@ function createApp() {
   // Zone picker
   app.action("change_zone", handlers.handleChangeZone);
 
+  // Date picker
+  app.action("change_date", handlers.handleChangeDateBtn);
+  app.view("date_picker_submit", handlers.handleDatePickerSubmit);
+
   // Duplicate warning
   app.action("parse_anyway", handlers.handleParseAnyway);
   app.action("cancel_parse", handlers.handleCancelParse);
@@ -70,7 +74,10 @@ function createApp() {
   app.action("mod_reject", handlers.handleModReject);
   app.action("mod_add_pick", handlers.handleModAddPick);
   app.action("mod_add_search", handlers.handleModAddSearch);
+  app.action("mod_add_search_btn", handlers.handleModAddSearchBtn);
+  app.view("mod_add_search_modal", handlers.handleModAddSearchModalSubmit);
   app.action("mod_remove_pick", handlers.handleModRemovePick);
+  app.action("mod_remove_unresolved_pick", handlers.handleModRemoveUnresolvedPick);
   app.action("mod_zone_select", handlers.handleModZoneSelect);
 
   // Menu live filter (fires on each keystroke, updates modal via views.update)

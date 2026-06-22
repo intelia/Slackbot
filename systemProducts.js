@@ -11,7 +11,7 @@ class SystemProducts {
     try {
       const urlQuery = new URLSearchParams(query);
       const url = `${this.apiUrl}/${endpoint}?${urlQuery.toString()}`;
-      console.log("🚀 ~ SystemProducts ~ makeRequest ~ url:", url);
+      console.log("🚀 ~ SystemProducts ~ makeRequest ~ url:", endpoint);
       const res = await fetch(url, {
         method,
         headers: {
@@ -20,6 +20,10 @@ class SystemProducts {
         },
         body: body || null,
       });
+      console.log(
+        `🚀 ~ SystemProducts ~ Request status: ${endpoint}`,
+        res.status,
+      );
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -31,7 +35,7 @@ class SystemProducts {
       const data = await res.json();
       return data;
     } catch (error) {
-      console.log(`Error in makeRequest ${url}`, error.message);
+      console.log(`Error in makeRequest`, error.message);
       throw error;
     }
   }

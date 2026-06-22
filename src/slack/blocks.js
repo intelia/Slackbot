@@ -190,13 +190,24 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
     },
   });
 
-  if (order.scheduledDate) {
-    const humanDate = new Date(order.scheduledDate + 'T12:00:00').toLocaleDateString('en-NG', {
-      timeZone: 'Africa/Lagos', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-    });
+  {
+    const humanDate = order.scheduledDate
+      ? new Date(order.scheduledDate + 'T12:00:00').toLocaleDateString('en-NG', {
+          timeZone: 'Africa/Lagos', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+        })
+      : null;
     blocks.push({
-      type: 'context',
-      elements: [{ type: 'mrkdwn', text: `📅  *Scheduled delivery:*  ${humanDate}` }],
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: humanDate ? `📅  *Delivery date:*  ${humanDate}` : `📅  _No delivery date set_`,
+      },
+      accessory: {
+        type: 'button',
+        text: { type: 'plain_text', text: order.scheduledDate ? 'Change date' : 'Set date' },
+        action_id: 'change_date',
+        value: 'change_date',
+      },
     });
   }
 
@@ -397,6 +408,56 @@ function buildProductSearchModal(itemIndex, privateMetadata) {
   };
 }
 
+function buildDatePickerModal(privateMetadata, initialDate) {
+  const dateElement = {
+    type: 'datepicker',
+    action_id: 'date_pick',
+    placeholder: { type: 'plain_text', text: 'Select delivery date' },
+  };
+  if (initialDate) dateElement.initial_date = initialDate;
+
+  return {
+    type: 'modal',
+    callback_id: 'date_picker_submit',
+    private_metadata: privateMetadata,
+    title: { type: 'plain_text', text: 'Set Delivery Date' },
+    submit: { type: 'plain_text', text: 'Apply' },
+    close: { type: 'plain_text', text: 'Cancel' },
+    blocks: [
+      {
+        type: 'input',
+        block_id: 'delivery_date_block',
+        label: { type: 'plain_text', text: 'Delivery date' },
+        element: dateElement,
+      },
+    ],
+  };
+}
+
+function buildModAddSearchModal(meta) {
+  return {
+    type: 'modal',
+    callback_id: 'mod_add_search_modal',
+    private_metadata: JSON.stringify(meta),
+    title: { type: 'plain_text', text: 'Search Products' },
+    submit: { type: 'plain_text', text: 'Apply' },
+    close: { type: 'plain_text', text: 'Cancel' },
+    blocks: [
+      {
+        type: 'input',
+        block_id: 'product_select',
+        label: { type: 'plain_text', text: 'Product & size' },
+        element: {
+          type: 'external_select',
+          action_id: 'product_search_select',
+          placeholder: { type: 'plain_text', text: 'Type to search… e.g. "za", "banana 6", "choc"' },
+          min_query_length: 1,
+        },
+      },
+    ],
+  };
+}
+
 // ── Modification review blocks ────────────────────────────────────────────────
 
 function buildModReviewBlocks(mod, confirmedOrder) {
@@ -419,7 +480,18 @@ function buildModReviewBlocks(mod, confirmedOrder) {
     blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*CUSTOMER UPDATE:*\n${lines.join('\n')}` } });
   }
 
-  // ── Resolved add items — static_select when candidates > 1 ───────────────
+  // ── Recipient update ──────────────────────────────────────────────────────
+  if (mod.newRecipient && (mod.newRecipient.name || mod.newRecipient.phone)) {
+    const lines = [];
+    if (mod.newRecipient.name)  lines.push(`  👤  Name: *${mod.newRecipient.name}*`);
+    if (mod.newRecipient.phone) lines.push(`  📱  Phone: *${mod.newRecipient.phone}*`);
+    const prev = confirmedOrder.recipient
+      ? [confirmedOrder.recipient.name, confirmedOrder.recipient.phone].filter(Boolean).join('  ·  ')
+      : 'none';
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*RECIPIENT UPDATE* _(was: ${prev})_\n${lines.join('\n')}` } });
+  }
+
+  // ── Resolved add items — show match prominently + Search all button ───────
   for (let i = 0; i < mod.addItems.length; i++) {
     const item = mod.addItems[i];
     const candidates = item.candidates || [];
@@ -432,7 +504,7 @@ function buildModReviewBlocks(mod, confirmedOrder) {
       blocks.push({
         type: 'section',
         block_id: `mod_add_pick_${i}`,
-        text: { type: 'mrkdwn', text: `➕  *Add ×${item.qty}* — confirm product:` },
+        text: { type: 'mrkdwn', text: `➕  *Add ×${item.qty}:*  *${item.productName} · ${item.sizeName}* — ${fmt(item.lineTotal)}\n_${candidates.length} matches — tap to change:_` },
         accessory: {
           type: 'static_select',
           action_id: 'mod_add_pick',
@@ -441,11 +513,16 @@ function buildModReviewBlocks(mod, confirmedOrder) {
         },
       });
     } else {
-      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `  ➕  *${item.productName} · ${item.sizeName}*  ×${item.qty}  —  ${fmt(item.lineTotal)}` } });
+      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `➕  *Add ×${item.qty}:*  *${item.productName} · ${item.sizeName}* — ${fmt(item.lineTotal)}` } });
     }
+    blocks.push({
+      type: 'actions',
+      block_id: `mod_add_btn_${i}`,
+      elements: [{ type: 'button', text: { type: 'plain_text', text: '🔍 Search all products' }, action_id: 'mod_add_search_btn', value: String(i) }],
+    });
   }
 
-  // ── Unresolved additions — external_select to search & pick ──────────────
+  // ── Unresolved additions — inline search + Search all button ─────────────
   for (let i = 0; i < mod.unresolvedAdditions.length; i++) {
     const ua = mod.unresolvedAdditions[i];
     blocks.push({
@@ -459,38 +536,56 @@ function buildModReviewBlocks(mod, confirmedOrder) {
         min_query_length: 0,
       },
     });
+    blocks.push({
+      type: 'actions',
+      block_id: `mod_add_ubtn_${i}`,
+      elements: [{ type: 'button', text: { type: 'plain_text', text: '🔍 Search all products' }, action_id: 'mod_add_search_btn', value: `u_${i}` }],
+    });
   }
 
-  // ── Resolved remove items — static_select when multiple order items match ─
+  // ── Remove items — show match prominently + all-order-items dropdown ──────
+  const allOrderOptions = (confirmedOrder.items || []).map(oi => ({
+    text: { type: 'plain_text', text: trunc(`${oi.productName} · ${oi.sizeName} ×${oi.qty} — ${fmt(oi.unitPrice)}`, 75) },
+    value: oi.sizeId,
+  }));
+
   for (let i = 0; i < mod.removeItems.length; i++) {
     const item = mod.removeItems[i];
-    const candidates = item.candidates || [];
-    if (candidates.length > 1) {
-      const options = candidates.map(c => ({
-        text: { type: 'plain_text', text: trunc(`${c.productName} · ${c.sizeName} ×${c.qty} — ${fmt(c.unitPrice)}`, 75) },
-        value: c.sizeId,
-      }));
-      const initial_option = options.find(o => o.value === item.sizeId) || options[0];
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `➖  *Remove:*  *${item.productName} · ${item.sizeName}*  ×${item.qty}` } });
+    if (allOrderOptions.length > 0) {
+      const initial_option = allOrderOptions.find(o => o.value === item.sizeId) || allOrderOptions[0];
       blocks.push({
         type: 'section',
         block_id: `mod_remove_pick_${i}`,
-        text: { type: 'mrkdwn', text: `➖  *Remove* — confirm which item:` },
+        text: { type: 'mrkdwn', text: `_Select which order item to remove:_` },
         accessory: {
           type: 'static_select',
           action_id: 'mod_remove_pick',
           initial_option,
-          options,
+          options: allOrderOptions,
         },
       });
-    } else {
-      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `  ➖  *${item.productName} · ${item.sizeName}*  ×${item.qty}  —  ${fmt(item.lineTotal || item.unitPrice * item.qty)}` } });
     }
   }
 
-  // ── Unresolved removals (text only — nothing to pick from) ────────────────
-  if (mod.unresolvedRemovals.length > 0) {
-    const lines = mod.unresolvedRemovals.map(r => `  ⚠️  "${r.raw}" — not in this order`);
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*UNRESOLVED REMOVALS:*\n${lines.join('\n')}` } });
+  // ── Unresolved removals — pick from all order items ───────────────────────
+  for (let j = 0; j < mod.unresolvedRemovals.length; j++) {
+    const ur = mod.unresolvedRemovals[j];
+    if (allOrderOptions.length > 0) {
+      blocks.push({
+        type: 'section',
+        block_id: `mod_remove_unresolved_${j}`,
+        text: { type: 'mrkdwn', text: `⚠️  *"${trunc(ur.raw, 40)}"* — not found in order. Select item to remove:` },
+        accessory: {
+          type: 'static_select',
+          action_id: 'mod_remove_unresolved_pick',
+          placeholder: { type: 'plain_text', text: 'Select item to remove…' },
+          options: allOrderOptions,
+        },
+      });
+    } else {
+      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `⚠️  *"${trunc(ur.raw, 40)}"* — not in this order` } });
+    }
   }
 
   // ── Scheduled date change ─────────────────────────────────────────────────
@@ -528,7 +623,7 @@ function buildModReviewBlocks(mod, confirmedOrder) {
 
   blocks.push({ type: 'divider' });
 
-  const canApply = mod.addItems.length > 0 || mod.removeItems.length > 0 || mod.newZoneId || mod.newName || mod.newPhone || mod.newScheduledDate;
+  const canApply = mod.addItems.length > 0 || mod.removeItems.length > 0 || mod.newZoneId || mod.newName || mod.newPhone || mod.newScheduledDate || (mod.newRecipient && (mod.newRecipient.name || mod.newRecipient.phone));
   const hasAnyChange = canApply || mod.unresolvedAdditions.length > 0 || (mod.newAddress && !mod.newZoneId);
 
   if (hasAnyChange) {
@@ -802,7 +897,9 @@ module.exports = {
   buildReviewOrderBlocks,
   buildDuplicateWarningBlocks,
   buildZonePickerModal,
+  buildDatePickerModal,
   buildProductSearchModal,
+  buildModAddSearchModal,
   buildModReviewBlocks,
   buildMenuModal,
   buildCitiesModal,

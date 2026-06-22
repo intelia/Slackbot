@@ -27,7 +27,9 @@ const {
   buildReviewOrderBlocks,
   buildDuplicateWarningBlocks,
   buildZonePickerModal,
+  buildDatePickerModal,
   buildProductSearchModal,
+  buildModAddSearchModal,
   buildModReviewBlocks,
   buildMenuModal,
   buildCitiesModal,
@@ -567,6 +569,47 @@ async function handleZonePickerSubmit({ ack, body, view, client }) {
   });
 }
 
+// ── Date picker: open modal to set/change delivery date ──────────────────────
+
+async function handleChangeDateBtn({ ack, body, client }) {
+  await ack();
+  const channelId = body.container.channel_id;
+  const ts = body.container.message_ts;
+  const order = getOrder(channelId, ts);
+
+  await client.views.open({
+    trigger_id: body.trigger_id,
+    view: buildDatePickerModal(
+      JSON.stringify({ channelId, ts }),
+      order?.scheduledDate || null,
+    ),
+  });
+}
+
+// ── Date picker submitted → update order.scheduledDate ────────────────────────
+
+async function handleDatePickerSubmit({ ack, body, view, client }) {
+  await ack({ response_action: "clear" });
+
+  const meta = JSON.parse(view.private_metadata || "{}");
+  const { channelId, ts } = meta;
+  const selectedDate =
+    view.state.values.delivery_date_block?.date_pick?.selected_date || null;
+
+  const order = getOrder(channelId, ts);
+  if (!order) return;
+
+  order.scheduledDate = selectedDate;
+  saveOrder(channelId, ts, order);
+
+  await client.chat.update({
+    channel: channelId,
+    ts,
+    text: "Review Order",
+    blocks: buildReviewOrderBlocks(order),
+  });
+}
+
 // ── Shared: push a confirmed order to Zupa and update the message ────────────
 
 async function executePush(order, confirmedBy, channelId, ts, client) {
@@ -615,14 +658,19 @@ async function executePush(order, confirmedBy, channelId, ts, client) {
   saveConfirmedOrder(channelId, order.slackRootTs || ts, order, confirmedBy);
   deleteOrder(channelId, ts);
 
+  const scheduledLine = order.scheduledDate
+    ? `Delivery date: ${new Date(order.scheduledDate + "T12:00:00").toLocaleDateString("en-NG", { timeZone: "Africa/Lagos", weekday: "short", day: "numeric", month: "short", year: "numeric" })}`
+    : null;
+
   const successText = [
     `✅  *Order confirmed by <@${confirmedBy}>*`,
     `Customer: ${order.customer.name || "—"}  |  ${order.fulfillment.type === "pickup" ? "Pickup" : "Delivery"}: ${order.fulfillment.zoneName || "—"}`,
+    scheduledLine,
     `Total: ₦${(order.orderTotal || 0).toLocaleString("en-NG")}`,
     pushResult.orderNumber
       ? `Zupa Order Number: \`${pushResult.orderNumber}\``
       : "_Payload logged (Zupa API not yet wired up)_",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 
   await client.chat.update({
     channel: channelId,
@@ -889,6 +937,9 @@ async function handleModConfirm({ ack, body, client }) {
     confirmedOrder.fulfillment.address = mod.newAddress;
   }
   if (mod.newScheduledDate) confirmedOrder.scheduledDate = mod.newScheduledDate;
+  if (mod.newRecipient && (mod.newRecipient.name || mod.newRecipient.phone)) {
+    confirmedOrder.recipient = mod.newRecipient;
+  }
   updateConfirmedOrder(channelId, threadTs, confirmedOrder);
 
   const nameLine = mod.newName ? `  👤  Name: ${mod.newName}` : null;
@@ -906,9 +957,13 @@ async function handleModConfirm({ ack, body, client }) {
   const dateLine = mod.newScheduledDate
     ? `  📅  Delivery date: ${mod.newScheduledDate}`
     : null;
+  const recipientLine = mod.newRecipient && (mod.newRecipient.name || mod.newRecipient.phone)
+    ? `  📦  Recipient: ${[mod.newRecipient.name, mod.newRecipient.phone].filter(Boolean).join('  ·  ')}`
+    : null;
   const summary = [
     nameLine,
     phoneLine,
+    recipientLine,
     ...addedLines,
     ...removedLines,
     addressLine,
@@ -1055,10 +1110,146 @@ async function handleModRemovePick({ ack, body, client }) {
 
   const item = modState.mod.removeItems[idx];
   if (!item) return;
-  const picked = (item.candidates || []).find((c) => c.sizeId === sizeId);
-  if (!picked) return;
 
-  modState.mod.removeItems[idx] = { ...picked, candidates: item.candidates };
+  const orderItem = (modState.confirmedOrder.items || []).find(
+    (oi) => oi.sizeId === sizeId,
+  );
+  if (!orderItem) return;
+
+  modState.mod.removeItems[idx] = {
+    productName: orderItem.productName,
+    sizeName: orderItem.sizeName,
+    sizeId: orderItem.sizeId,
+    qty: orderItem.qty,
+    unitPrice: orderItem.unitPrice,
+    lineTotal: orderItem.lineTotal,
+    candidates: item.candidates || [],
+  };
+
+  await client.chat.update({
+    channel: channelId,
+    ts: modMessageTs,
+    text: "Order Modification",
+    blocks: buildModReviewBlocks(modState.mod, modState.confirmedOrder),
+  });
+}
+
+// ── Mod: open full catalog search modal for an add item ──────────────────────
+
+async function handleModAddSearchBtn({ ack, body, client }) {
+  await ack();
+  const action = body.actions[0];
+  const value = action.value || "";
+
+  const channelId = body.container.channel_id;
+  const modMessageTs = body.container.message_ts;
+
+  const isUnresolved = value.startsWith("u_");
+  const idx = parseInt(isUnresolved ? value.slice(2) : value, 10);
+
+  await client.views.open({
+    trigger_id: body.trigger_id,
+    view: buildModAddSearchModal({ channelId, modMessageTs, idx, isUnresolved }),
+  });
+}
+
+// ── Mod: full catalog search modal submitted → update add item ────────────────
+
+async function handleModAddSearchModalSubmit({ ack, body, view, client }) {
+  await ack({ response_action: "clear" });
+
+  const meta = JSON.parse(view.private_metadata || "{}");
+  const { channelId, modMessageTs, idx, isUnresolved } = meta;
+  const selectedSizeId =
+    view.state.values.product_select.product_search_select.selected_option
+      ?.value;
+  if (!selectedSizeId) return;
+
+  const modState = modStateMap.get(stateKey(channelId, modMessageTs));
+  if (!modState) {
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: body.user.id,
+      text: "⚠️ Modification state was lost (the bot may have restarted). Please re-send the modification request.",
+    });
+    return;
+  }
+
+  let found = null;
+  for (const product of getProductIndex()) {
+    const size = (product.sizes || []).find((s) => s && s.id === selectedSizeId);
+    if (size) {
+      found = { product, size };
+      break;
+    }
+  }
+  if (!found) {
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: body.user.id,
+      text: "⚠️ That product could not be matched in the current catalogue. Please try searching again.",
+    });
+    return;
+  }
+
+  const newItem = {
+    productName: found.product.name,
+    sizeName: found.size.name,
+    sizeId: found.size.id,
+    qty: 1,
+    unitPrice: found.size.price,
+    lineTotal: found.size.price,
+    candidates: [],
+  };
+
+  if (isUnresolved) {
+    modState.mod.unresolvedAdditions.splice(idx, 1);
+    modState.mod.addItems.push(newItem);
+  } else {
+    const existing = modState.mod.addItems[idx];
+    if (existing) {
+      newItem.qty = existing.qty;
+      newItem.lineTotal = found.size.price * existing.qty;
+    }
+    modState.mod.addItems[idx] = newItem;
+  }
+
+  await client.chat.update({
+    channel: channelId,
+    ts: modMessageTs,
+    text: "Order Modification",
+    blocks: buildModReviewBlocks(modState.mod, modState.confirmedOrder),
+  });
+}
+
+// ── Mod: pick order item to remove for unresolved removal ────────────────────
+
+async function handleModRemoveUnresolvedPick({ ack, body, client }) {
+  await ack();
+  const action = body.actions[0];
+  const sizeId = action.selected_option.value;
+  const idx = parseInt((action.block_id || "").split("_").pop(), 10);
+
+  const channelId = body.container.channel_id;
+  const modMessageTs = body.container.message_ts;
+  const modState = modStateMap.get(stateKey(channelId, modMessageTs));
+  if (!modState) return;
+
+  const orderItem = (modState.confirmedOrder.items || []).find(
+    (oi) => oi.sizeId === sizeId,
+  );
+  if (!orderItem) return;
+
+  modState.mod.unresolvedRemovals.splice(idx, 1);
+  modState.mod.removeItems.push({
+    productName: orderItem.productName,
+    sizeName: orderItem.sizeName,
+    sizeId: orderItem.sizeId,
+    qty: orderItem.qty,
+    unitPrice: orderItem.unitPrice,
+    lineTotal: orderItem.lineTotal,
+    candidates: [],
+  });
 
   await client.chat.update({
     channel: channelId,
@@ -1329,6 +1520,8 @@ module.exports = {
   handleProductSearchSubmit,
   handleChangeZone,
   handleZonePickerSubmit,
+  handleChangeDateBtn,
+  handleDatePickerSubmit,
   handleConfirmOrder,
   handleParseAnyway,
   handleCancelParse,
@@ -1338,7 +1531,10 @@ module.exports = {
   handleModReject,
   handleModAddPick,
   handleModAddSearch,
+  handleModAddSearchBtn,
+  handleModAddSearchModalSubmit,
   handleModRemovePick,
+  handleModRemoveUnresolvedPick,
   handleModZoneSelect,
   handleVersionCommand,
   handleMenuCommand,

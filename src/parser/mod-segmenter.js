@@ -36,6 +36,7 @@ Parse what the user wants to change:
 - newName: new customer name if the user wants to change it, else null.
 - newPhone: new customer phone number if the user wants to change it, else null.
 - newScheduledDate: if the user wants to set or change the delivery/pickup date (e.g. "change delivery to Friday", "reschedule to 25 June", "deliver tomorrow"), resolve to YYYY-MM-DD using today's date as reference. Return null if no date change is requested.
+- newRecipient: if the user wants to add or change the delivery recipient (e.g. "recipient is Amaka 0801…", "deliver to Tolu instead", "change recipient to…"), extract their name and/or phone. Set to null if no recipient change is requested.
 
 Return ONLY the JSON object matching the schema.`;
 }
@@ -75,8 +76,22 @@ const RESPONSE_FORMAT = {
         newName:          { anyOf: [{ type: 'string' }, { type: 'null' }] },
         newPhone:         { anyOf: [{ type: 'string' }, { type: 'null' }] },
         newScheduledDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        newRecipient: {
+          anyOf: [
+            {
+              type: 'object',
+              properties: {
+                name:  { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                phone: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+              },
+              required: ['name', 'phone'],
+              additionalProperties: false,
+            },
+            { type: 'null' },
+          ],
+        },
       },
-      required: ['addItems', 'removeItems', 'newAddress', 'newName', 'newPhone', 'newScheduledDate'],
+      required: ['addItems', 'removeItems', 'newAddress', 'newName', 'newPhone', 'newScheduledDate', 'newRecipient'],
       additionalProperties: false,
     },
   },
@@ -149,6 +164,11 @@ function resolve(seg, confirmedOrder) {
     }
   }
 
+  const rec = seg.newRecipient;
+  const newRecipient = rec && (rec.name || rec.phone)
+    ? { name: rec.name || null, phone: rec.phone || null }
+    : null;
+
   return {
     addItems,
     removeItems,
@@ -162,6 +182,7 @@ function resolve(seg, confirmedOrder) {
     newName:          seg.newName          || null,
     newPhone:         seg.newPhone         || null,
     newScheduledDate: seg.newScheduledDate || null,
+    newRecipient,
   };
 }
 
