@@ -150,9 +150,17 @@ async function parse(rawMessage) {
 
   const status = hasUnresolved ? 'needs_confirmation' : 'auto_accepted';
 
+  // Normalise recipient: keep only if it has at least a name or phone,
+  // and is genuinely distinct from the customer.
+  const rec = seg.recipient;
+  const recipientIsDistinct = rec && (rec.name || rec.phone) &&
+    !(rec.name === seg.customer.name && rec.phone === seg.customer.phone);
+  const recipient = recipientIsDistinct ? { name: rec.name || null, phone: rec.phone || null } : null;
+
   return {
     rawMessage,
     customer: seg.customer,
+    recipient,
     fulfillment: updatedFulfillment,
     items,
     statedTotal: seg.statedTotal,

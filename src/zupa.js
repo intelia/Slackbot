@@ -28,6 +28,12 @@ function buildZupaPayload(order) {
       name: order.customer.name || null,
       phoneNumber: formatPhone(order.customer.phone),
     },
+    ...(order.recipient && (order.recipient.name || order.recipient.phone) && {
+      recipient: {
+        name: order.recipient.name || null,
+        phoneNumber: formatPhone(order.recipient.phone),
+      },
+    }),
     order: {
       amount: order.orderTotal,
       specialNote: specialNoteParts.join(" | ") || "",

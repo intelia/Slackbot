@@ -35,6 +35,7 @@ Extraction rules:
 - statedFee: if customer writes "Delivery 4000" or "delivery fee: ₦3,500", extract as plain number; else null.
 - If a name appears in parentheses after the total (e.g. "Total....12,300(Oluseye)"), treat it as the customer name.
 - scheduledDate: if the customer mentions a future delivery/pickup date (e.g. "deliver Friday", "for Saturday 21st", "I need this on 25 June", "schedule for next Monday", "tomorrow"), resolve it to YYYY-MM-DD format using today's date as the reference. Return null for same-day or unspecified orders.
+- recipient: if the order mentions a separate delivery recipient (e.g. "deliver to Amaka 08012345678", "recipient: Tolu", "for my mum at VI — call 0901…", "send to [name]"), extract their name and/or phone into recipient. The customer is the person placing/paying; the recipient is the person receiving. If customer and recipient appear to be the same person, set recipient to null. If only a recipient name is given with no separate customer name, still populate recipient (not customer).
 - Notes: special instructions like "please prioritize", "urgent", "extra spicy", "no sugar". Short noise phrases (greetings, "hi", "Hello", "eye -", single orphan letters) go into notes only if they could be instructions; otherwise ignore.
 - Ignore lines that are clearly noise: orphan letters/characters, "eye -" without context, greetings with no content.
 
@@ -96,9 +97,23 @@ const RESPONSE_FORMAT = {
         },
         statedTotal:   { anyOf: [{ type: 'number' }, { type: 'null' }] },
         scheduledDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        recipient: {
+          anyOf: [
+            {
+              type: 'object',
+              properties: {
+                name:  { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                phone: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+              },
+              required: ['name', 'phone'],
+              additionalProperties: false,
+            },
+            { type: 'null' },
+          ],
+        },
         notes:         { type: 'array', items: { type: 'string' } },
       },
-      required: ['customer', 'fulfillment', 'itemLines', 'statedTotal', 'scheduledDate', 'notes'],
+      required: ['customer', 'fulfillment', 'itemLines', 'statedTotal', 'scheduledDate', 'recipient', 'notes'],
       additionalProperties: false,
     },
   },

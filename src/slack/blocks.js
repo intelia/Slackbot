@@ -164,6 +164,14 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
     text: { type: 'mrkdwn', text: `*CUSTOMER*\n${customerParts.join('  ·  ') || '—'}` },
   });
 
+  if (order.recipient && (order.recipient.name || order.recipient.phone)) {
+    const recipientParts = [order.recipient.name, order.recipient.phone].filter(Boolean);
+    blocks.push({
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: `📦  *Recipient:*  ${recipientParts.join('  ·  ')}` }],
+    });
+  }
+
   // Fulfillment
   const fulfillmentDesc = fulfillment.type === 'pickup'
     ? `◉ *Pickup* — ${fulfillment.branch || 'Lekki'}  (₦0)`
@@ -685,6 +693,10 @@ function buildOrderSections(orders, cap) {
       order.customer?.instagram ? `@${order.customer.instagram.replace(/^@/, '')}` : null,
     ].filter(Boolean);
 
+    const recipientLine = (order.recipient?.name || order.recipient?.phone)
+      ? `📦 Recipient: ${[order.recipient.name, order.recipient.phone].filter(Boolean).join('  ·  ')}`
+      : null;
+
     const isPickup = order.fulfillment?.type === 'pickup';
     const fulfillmentLine = isPickup
       ? `📦 Pickup — ${order.fulfillment?.branch || 'Lekki'}  _(₦0)_`
@@ -702,6 +714,7 @@ function buildOrderSections(orders, cap) {
     const text = [
       `*${orderNum}*  ·  ${time}`,
       `👤 ${customerParts.join('  ·  ') || '—'}`,
+      recipientLine,
       fulfillmentLine,
       scheduledLine,
       ...itemLines,
