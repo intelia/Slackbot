@@ -20,6 +20,7 @@ const {
   getDailySummary,
 } = require("../data/db");
 const { parseModification } = require("../parser/mod-segmenter");
+const { forceRefresh } = require("../data/loader");
 const {
   fmt,
   trunc,
@@ -338,7 +339,9 @@ async function handleProductSearchOptions({ options, ack }) {
   const query = (options.value || "").trim();
 
   let candidates;
-  if (query.length < 2) {
+  if (query.length < 1) {
+    // Empty query — return a broad alphabetical sample as a browsable fallback.
+    // In practice min_query_length:1 on the modal means this branch is rarely hit.
     candidates = getProductIndex()
       .slice()
       .sort((a, b) => a.name.localeCompare(b.name))
@@ -352,6 +355,8 @@ async function handleProductSearchOptions({ options, ack }) {
       )
       .slice(0, 100);
   } else {
+    // Any typed character triggers the real scorer — covers the full catalogue
+    // including products near end of alphabet (e.g. "z" finds "Zayith Yoghurt").
     candidates = matchProduct(query, null, null, null, 100);
   }
 
@@ -1274,6 +1279,25 @@ async function handleSummaryCommand({ command, ack, client }) {
   }
 }
 
+// ── /refresh-products ────────────────────────────────────────────────────────
+
+async function handleRefreshProductsCommand({ command, ack, respond }) {
+  await ack();
+  try {
+    const { productCount, zoneCount } = await forceRefresh();
+    await respond({
+      response_type: 'in_channel',
+      text: `✅ Product catalogue refreshed by <@${command.user_id}> — *${productCount} products* and *${zoneCount} delivery zones* loaded.`,
+    });
+  } catch (err) {
+    console.error('[handleRefreshProductsCommand]', err);
+    await respond({
+      response_type: 'ephemeral',
+      text: `❌ Refresh failed: ${err.message}`,
+    });
+  }
+}
+
 // ── /summary modal submit → paste to channel ──────────────────────────────────
 
 async function handleSummarySubmit({ ack, body, view, client }) {
@@ -1326,4 +1350,5 @@ module.exports = {
   handleCitiesSelect,
   handleSummaryCommand,
   handleSummarySubmit,
+  handleRefreshProductsCommand,
 };

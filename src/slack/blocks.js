@@ -381,8 +381,8 @@ function buildProductSearchModal(itemIndex, privateMetadata) {
         element: {
           type: 'external_select',
           action_id: 'product_search_select',
-          placeholder: { type: 'plain_text', text: 'Type to search… e.g. "ha ca coc", "banana 6"' },
-          min_query_length: 0,
+          placeholder: { type: 'plain_text', text: 'Type to search… e.g. "za", "banana 6", "choc"' },
+          min_query_length: 1,
         },
       },
     ],

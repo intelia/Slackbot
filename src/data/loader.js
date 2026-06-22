@@ -183,4 +183,18 @@ async function refreshIfStale() {
   }
 }
 
-module.exports = { init, refreshIfStale };
+// Force-fetches from the API regardless of cache state.
+// Returns { products, zones } counts on success; throws on failure.
+async function forceRefresh() {
+  const { products, cities } = await loadFromAPI();
+  store.setData(products, cities);
+  const { refreshIndexes } = require("../parser/matcher");
+  refreshIndexes();
+  lastLoadedAt = Date.now();
+  const productCount = store.getProducts().length;
+  const zoneCount    = store.getCities().namedZones.length;
+  console.log(`[loader] Force-refreshed — ${productCount} products, ${zoneCount} named zones`);
+  return { productCount, zoneCount };
+}
+
+module.exports = { init, refreshIfStale, forceRefresh };
