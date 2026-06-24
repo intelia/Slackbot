@@ -24,6 +24,7 @@ function buildZupaPayload(order) {
   const isPickup = order.fulfillment.type === "pickup";
 
   return {
+    clientReference: order.clientReference || null,
     customer: {
       name: order.customer.name || null,
       phoneNumber: formatPhone(order.customer.phone),

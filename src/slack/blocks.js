@@ -150,9 +150,10 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
     ? `⚠️  *Price mismatch* — all items resolved but total is off by ${fmt(Math.abs(order.reconciliation.gap))}`
     : order.status === 'auto_accepted' ? '✅  *Auto-accepted* — verify and confirm' : '✅  *All items resolved* — ready to confirm';
 
+  const refLine = order.clientReference ? `Ref: \`${order.clientReference}\`` : '';
   blocks.push({
     type: 'section',
-    text: { type: 'mrkdwn', text: `*REVIEW ORDER*\n${statusText}` },
+    text: { type: 'mrkdwn', text: `*REVIEW ORDER*${refLine ? '  ·  ' + refLine : ''}\n${statusText}` },
   });
   blocks.push({ type: 'divider' });
 

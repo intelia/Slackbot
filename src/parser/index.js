@@ -1,11 +1,18 @@
 'use strict';
 
+const crypto = require('crypto');
 const { segment } = require('./ai-segmenter');
 const { matchProduct, matchPickup, matchZone, getSurgeTwins, canonicalSize } = require('./matcher');
 const { reconcile } = require('./reconciler');
 
 // Confidence thresholds
 const HIGH_CONFIDENCE_SCORE = 0.7;
+
+function generateOrderRef() {
+  const date = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }).replace(/-/g, '');
+  const suffix = crypto.randomBytes(3).toString('hex').toUpperCase();
+  return `GT-${date}-${suffix}`;
+}
 
 function resolveItem(itemLine) {
   const { raw, productPhrase, sizeToken, qty, statedPrice } = itemLine;
@@ -159,6 +166,7 @@ async function parse(rawMessage) {
 
   return {
     rawMessage,
+    clientReference: generateOrderRef(),
     customer: seg.customer,
     recipient,
     fulfillment: updatedFulfillment,

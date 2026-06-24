@@ -670,6 +670,7 @@ async function executePush(order, confirmedBy, channelId, ts, client) {
     pushResult.orderNumber
       ? `Zupa Order Number: \`${pushResult.orderNumber}\``
       : "_Payload logged (Zupa API not yet wired up)_",
+    order.clientReference ? `Ref: \`${order.clientReference}\`` : null,
   ].filter(Boolean).join("\n");
 
   await client.chat.update({
