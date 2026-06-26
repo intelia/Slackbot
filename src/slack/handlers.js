@@ -25,6 +25,7 @@ const {
   fmt,
   trunc,
   buildReviewOrderBlocks,
+  buildConfirmationBlocks,
   buildDuplicateWarningBlocks,
   buildZonePickerModal,
   buildDatePickerModal,
@@ -658,26 +659,11 @@ async function executePush(order, confirmedBy, channelId, ts, client) {
   saveConfirmedOrder(channelId, order.slackRootTs || ts, order, confirmedBy);
   deleteOrder(channelId, ts);
 
-  const scheduledLine = order.scheduledDate
-    ? `Delivery date: ${new Date(order.scheduledDate + "T12:00:00").toLocaleDateString("en-NG", { timeZone: "Africa/Lagos", weekday: "short", day: "numeric", month: "short", year: "numeric" })}`
-    : null;
-
-  const successText = [
-    `✅  *Order confirmed by <@${confirmedBy}>*`,
-    `Customer: ${order.customer.name || "—"}  |  ${order.fulfillment.type === "pickup" ? "Pickup" : "Delivery"}: ${order.fulfillment.zoneName || "—"}`,
-    scheduledLine,
-    `Total: ₦${(order.orderTotal || 0).toLocaleString("en-NG")}`,
-    pushResult.orderNumber
-      ? `Zupa Order Number: \`${pushResult.orderNumber}\``
-      : "_Payload logged (Zupa API not yet wired up)_",
-    order.clientReference ? `Ref: \`${order.clientReference}\`` : null,
-  ].filter(Boolean).join("\n");
-
   await client.chat.update({
     channel: channelId,
     ts,
-    text: successText,
-    blocks: [],
+    text: `✅ Order confirmed${pushResult.orderNumber ? " · Zupa: " + pushResult.orderNumber : ""}${order.clientReference ? " · Ref: " + order.clientReference : ""}`,
+    blocks: buildConfirmationBlocks(order, pushResult.orderNumber, confirmedBy),
   });
 }
 

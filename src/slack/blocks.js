@@ -307,6 +307,104 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
   return blocks;
 }
 
+// ── Confirmed order receipt ───────────────────────────────────────────────────
+
+function buildConfirmationBlocks(order, orderNumber, confirmedBy) {
+  const blocks = [];
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  const refPart  = order.clientReference ? `  ·  Ref: \`${order.clientReference}\`` : '';
+  const numPart  = orderNumber ? `  ·  Zupa: \`${orderNumber}\`` : '';
+  blocks.push({
+    type: 'section',
+    text: {
+      type: 'mrkdwn',
+      text: `✅  *ORDER CONFIRMED*${refPart}${numPart}\nConfirmed by <@${confirmedBy}>`,
+    },
+  });
+  blocks.push({ type: 'divider' });
+
+  // ── Customer ──────────────────────────────────────────────────────────────
+  const customerParts = [
+    order.customer?.name,
+    order.customer?.instagram ? `@${order.customer.instagram.replace(/^@/, '')}` : null,
+    order.customer?.phone,
+  ].filter(Boolean);
+  blocks.push({
+    type: 'section',
+    text: { type: 'mrkdwn', text: `*CUSTOMER*\n${customerParts.join('  ·  ') || '—'}` },
+  });
+
+  if (order.recipient && (order.recipient.name || order.recipient.phone)) {
+    const rParts = [order.recipient.name, order.recipient.phone].filter(Boolean);
+    blocks.push({
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: `📦  *Recipient:*  ${rParts.join('  ·  ')}` }],
+    });
+  }
+
+  // ── Fulfillment ───────────────────────────────────────────────────────────
+  const isPickup = order.fulfillment?.type === 'pickup';
+  const fulfillmentText = isPickup
+    ? `◉  *Pickup* — ${order.fulfillment?.branch || 'Lekki'}  _(₦0)_`
+    : `🚚  *Delivery* — ${order.fulfillment?.zoneName || order.fulfillment?.address || '—'}${order.fulfillment?.branch ? '  (' + order.fulfillment.branch + ')' : ''}  —  ${fmt(order.fulfillment?.fee || 0)}`;
+  blocks.push({
+    type: 'section',
+    text: { type: 'mrkdwn', text: fulfillmentText },
+  });
+
+  if (order.scheduledDate) {
+    const humanDate = new Date(order.scheduledDate + 'T12:00:00').toLocaleDateString('en-NG', {
+      timeZone: 'Africa/Lagos', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    });
+    blocks.push({
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: `📅  *Delivery date:*  ${humanDate}` }],
+    });
+  }
+
+  blocks.push({ type: 'divider' });
+
+  // ── Items ─────────────────────────────────────────────────────────────────
+  blocks.push({ type: 'section', text: { type: 'mrkdwn', text: '*ITEMS*' } });
+
+  for (const item of (order.items || [])) {
+    const unitNote = item.qty > 1 ? `  _(${fmt(item.unitPrice)} each)_` : '';
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `×${item.qty}  *${item.productName}*  ·  _${item.sizeName}_  —  ${fmt(item.lineTotal)}${unitNote}`,
+      },
+    });
+  }
+
+  blocks.push({ type: 'divider' });
+
+  // ── Totals ────────────────────────────────────────────────────────────────
+  blocks.push({
+    type: 'section',
+    text: {
+      type: 'mrkdwn',
+      text: [
+        `Items:  *${fmt(order.itemsSubtotal)}*`,
+        `Delivery:  *${fmt(order.fulfillment?.fee || 0)}*`,
+        `─────────────────`,
+        `TOTAL:  *${fmt(order.orderTotal)}*`,
+      ].join('\n'),
+    },
+  });
+
+  if (order.notes && order.notes.length > 0) {
+    blocks.push({
+      type: 'context',
+      elements: [{ type: 'mrkdwn', text: `📌  _${order.notes.join('  ·  ')}_` }],
+    });
+  }
+
+  return blocks;
+}
+
 // ── Pre-parse duplicate warning ───────────────────────────────────────────────
 
 function buildDuplicateWarningBlocks(duplicate) {
@@ -896,6 +994,7 @@ module.exports = {
   fmt,
   trunc,
   buildReviewOrderBlocks,
+  buildConfirmationBlocks,
   buildDuplicateWarningBlocks,
   buildZonePickerModal,
   buildDatePickerModal,
