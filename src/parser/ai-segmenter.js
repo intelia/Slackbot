@@ -24,7 +24,8 @@ Extraction rules:
 - Nigerian phone numbers: 07xxx / 08xxx / 09xxx (11 digits) or +234xxx (13 digits). Extract as-is (no formatting changes).
 - Instagram handles always start with @. Keep the @ prefix.
 - For each ORDER ITEM extract: productPhrase (product name only, no size/qty/price), sizeToken, qty, statedPrice.
-- CRITICAL: productPhrase must be the FULL product name from the CATALOGUE below. Customers often abbreviate — resolve abbreviations to the closest catalogue name. E.g. "banana" → "Banana Bread", "choc cake" → "Chocolate Cake". Never truncate or abbreviate.
+- CRITICAL: productPhrase must be the FULL product name from the CATALOGUE below. Customers often abbreviate — expand genuine abbreviations to the full catalogue name. E.g. "banana" → "Banana Bread", "choc cake" → "Chocolate Cake". Never truncate or abbreviate.
+- CRITICAL: Do NOT substitute one catalogue product for a similar one. If the customer wrote a word that distinguishes two similar products (e.g. "fried rice" vs "jollof rice", "red velvet" vs "black forest"), keep that exact word — do not collapse it to the more common variant. Only expand when the customer clearly wrote less than the product name (abbreviation/shorthand); never replace one complete product name with another.
 - sizeToken must be EXACTLY one of these values or null: mini, midi, regular, maxi, extra large, 6", 8", 10", 12", 14", standard, pack, packs, 25cl, 50cl, 1l, bowl
 - Quantities: "x2", "2x", "×2", "(2)", "2 packs", "two" → integer 2. Default qty = 1 if not stated.
 - Prices: "3000", "₦3,000", "3k", "3,500" → extract as a plain number (e.g. 3000, 3500). "3k" → 3000.
