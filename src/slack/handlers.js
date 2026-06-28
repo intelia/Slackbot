@@ -7,6 +7,7 @@ const {
   getProductIndex,
   namedZones,
   rideHailTiers,
+  pickupRows,
   normalize,
 } = require("../parser/matcher");
 const { reconcile } = require("../parser/reconciler");
@@ -538,10 +539,13 @@ async function handleZonePickerSubmit({ ack, body, view, client }) {
       ?.value;
   const rideHailId =
     view.state.values.ride_hail_select?.ride_hail_input?.selected_option?.value;
+  const pickupId =
+    view.state.values.pickup_select?.pickup_input?.selected_option?.value;
 
   if (namedZoneId) {
     const zone = getZoneById(namedZoneId);
     if (zone) {
+      order.fulfillment.type = "delivery";
       order.fulfillment.zoneId = zone.id;
       order.fulfillment.zoneName = zone.name;
       order.fulfillment.branch = zone.branch;
@@ -551,10 +555,21 @@ async function handleZonePickerSubmit({ ack, body, view, client }) {
   } else if (rideHailId) {
     const tier = rideHailTiers.find((t) => t.id === rideHailId);
     if (tier) {
+      order.fulfillment.type = "delivery";
       order.fulfillment.zoneId = tier.id;
       order.fulfillment.zoneName = tier.name;
       order.fulfillment.fee = tier.price;
       order.fulfillment.branch = tier.branch;
+      order.fulfillment.resolved = true;
+    }
+  } else if (pickupId) {
+    const row = pickupRows.find((r) => r.id === pickupId);
+    if (row) {
+      order.fulfillment.type = "pickup";
+      order.fulfillment.zoneId = row.id;
+      order.fulfillment.zoneName = row.name;
+      order.fulfillment.branch = row.branch;
+      order.fulfillment.fee = 0;
       order.fulfillment.resolved = true;
     }
   }

@@ -1,6 +1,6 @@
 'use strict';
 
-const { rideHailTiers, namedZones } = require('../parser/matcher');
+const { rideHailTiers, namedZones, pickupRows } = require('../parser/matcher');
 const store = require('../data/store');
 
 function fmt(n) {
@@ -444,6 +444,11 @@ function buildZonePickerModal(currentAddress, privateMetadata) {
     value: t.id,
   }));
 
+  const pickupOptions = pickupRows.map(r => ({
+    text: { type: 'plain_text', text: trunc(r.name, 75) },
+    value: r.id,
+  }));
+
   return {
     type: 'modal',
     callback_id: 'zone_picker_submit',
@@ -477,6 +482,21 @@ function buildZonePickerModal(currentAddress, privateMetadata) {
           options: rideHailOptions,
         },
       },
+      ...(pickupOptions.length > 0 ? [
+        { type: 'divider' },
+        {
+          type: 'input',
+          block_id: 'pickup_select',
+          label: { type: 'plain_text', text: 'Or select a pickup location' },
+          optional: true,
+          element: {
+            type: 'static_select',
+            action_id: 'pickup_input',
+            placeholder: { type: 'plain_text', text: 'Select pickup location…' },
+            options: pickupOptions,
+          },
+        },
+      ] : []),
     ],
   };
 }
