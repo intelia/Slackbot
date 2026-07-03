@@ -16,6 +16,7 @@ function createApp() {
   app.command("/menu", handlers.handleMenuCommand);
   app.command("/cities", handlers.handleCitiesCommand);
   app.command("/my-orders", handlers.handleSummaryCommand);
+  app.command("/daily-summary", handlers.handleDailySummaryCommand);
   app.command("/refresh-products", handlers.handleRefreshProductsCommand);
 
   // ── Events ──────────────────────────────────────────────────────────────────

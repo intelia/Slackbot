@@ -19,6 +19,10 @@ const {
   getConfirmedOrder,
   updateConfirmedOrder,
   getDailySummary,
+  getAllOrdersToday,
+  savePendingOrder,
+  deletePendingOrder,
+  getAllPendingOrders,
 } = require("../data/db");
 const { parseModification } = require("../parser/mod-segmenter");
 const { forceRefresh } = require("../data/loader");
@@ -37,11 +41,11 @@ const {
   buildCitiesModal,
   buildSummaryModal,
   buildSummaryChannelBlocks,
+  buildEodSummaryBlocks,
 } = require("./blocks");
 
-// ── In-memory order state ─────────────────────────────────────────────────────
+// ── In-memory order state (backed by SQLite for restart recovery) ─────────────
 // Key: `${channelId}:${ts}` → DraftOrder
-// This resets on restart; Phase 2 should persist to a database.
 const orderStateMap = new Map();
 
 function stateKey(channelId, ts) {
@@ -54,10 +58,12 @@ function getOrder(channelId, ts) {
 
 function saveOrder(channelId, ts, order) {
   orderStateMap.set(stateKey(channelId, ts), order);
+  savePendingOrder(channelId, ts, order);
 }
 
 function deleteOrder(channelId, ts) {
   orderStateMap.delete(stateKey(channelId, ts));
+  deletePendingOrder(channelId, ts);
 }
 
 // ── In-memory modification state ──────────────────────────────────────────────
@@ -1472,6 +1478,50 @@ async function handleSummaryCommand({ command, ack, client }) {
   }
 }
 
+// ── /daily-summary command ────────────────────────────────────────────────────
+
+async function handleDailySummaryCommand({ command, ack, client }) {
+  await ack();
+
+  const channelId = command.channel_id;
+  const userId    = command.user_id;
+
+  try {
+    const arg        = (command.text || "").trim();
+    const offsetDays = /^-?\d+$/.test(arg) ? parseInt(arg, 10) : 0;
+
+    const allOrders     = getAllOrdersToday(offsetDays);
+    const channelOrders = allOrders.filter((o) => o._channelId === channelId);
+
+    const dateLabel = new Date(Date.now() + offsetDays * 86_400_000).toLocaleDateString(
+      "en-NG",
+      { timeZone: "Africa/Lagos", weekday: "long", day: "numeric", month: "long", year: "numeric" },
+    );
+
+    if (channelOrders.length === 0) {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: `📊 No orders confirmed in this channel on ${dateLabel}.`,
+      });
+      return;
+    }
+
+    await client.chat.postMessage({
+      channel: channelId,
+      text: `📊 Channel summary — ${dateLabel}  ·  ${channelOrders.length} order${channelOrders.length !== 1 ? "s" : ""}`,
+      blocks: buildEodSummaryBlocks(channelOrders, allOrders, dateLabel),
+    });
+  } catch (err) {
+    console.error("[handleDailySummaryCommand]", err);
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: userId,
+      text: `❌ Could not generate summary: ${err.message}`,
+    }).catch(() => {});
+  }
+}
+
 // ── /refresh-products ────────────────────────────────────────────────────────
 
 async function handleRefreshProductsCommand({ command, ack, respond }) {
@@ -1507,6 +1557,34 @@ async function handleSummarySubmit({ ack, body, view, client }) {
     text: `Daily summary from <@${userId}> — ${dateLabel}`,
     blocks: buildSummaryChannelBlocks(orders, dateLabel, userId),
   });
+}
+
+// ── Startup: restore pending orders from SQLite ───────────────────────────────
+
+async function restorePendingOrders(client) {
+  const rows = getAllPendingOrders();
+  if (rows.length === 0) return { restored: 0, failed: 0 };
+
+  let restored = 0;
+  let failed = 0;
+
+  for (const { channelId, ts, order } of rows) {
+    try {
+      const blocks = buildReviewOrderBlocks(order);
+      await client.chat.update({ channel: channelId, ts, text: 'Review Order', blocks });
+      orderStateMap.set(stateKey(channelId, ts), order);
+      restored++;
+      console.log(`[restore] ✓ ${channelId}:${ts}`);
+    } catch (err) {
+      // Message deleted or bot removed — discard from DB so it doesn't reappear
+      deletePendingOrder(channelId, ts);
+      failed++;
+      console.error(`[restore] ✗ ${channelId}:${ts} — ${err.message || err}`);
+    }
+  }
+
+  console.log(`[restore] Done — ${restored} restored, ${failed} failed.`);
+  return { restored, failed };
 }
 
 module.exports = {
@@ -1548,5 +1626,7 @@ module.exports = {
   handleCitiesSelect,
   handleSummaryCommand,
   handleSummarySubmit,
+  handleDailySummaryCommand,
   handleRefreshProductsCommand,
+  restorePendingOrders,
 };

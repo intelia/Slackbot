@@ -3,6 +3,8 @@
 require('dotenv').config();
 const { createApp } = require('./src/slack/index');
 const loader = require('./src/data/loader');
+const { scheduleEodSummary, postRestartNotification } = require('./src/slack/eod');
+const { restorePendingOrders } = require('./src/slack/handlers');
 
 // @slack/socket-mode's finity state machine throws synchronously when Slack
 // sends 'server explicit disconnect' in the 'connecting' state — a known SDK
@@ -29,4 +31,11 @@ process.on('uncaughtException', (err) => {
   const port = parseInt(process.env.PORT || '3000', 10);
   await app.start(port);
   console.log(`⚡ Zupa Order Bot running on port ${port} (Socket Mode)`);
+
+  scheduleEodSummary(app.client);
+
+  // Restore pending orders first, then announce (notification includes restore status + changelog if version changed)
+  restorePendingOrders(app.client)
+    .then(restoreResult => postRestartNotification(app.client, restoreResult))
+    .catch(err => console.error('[startup] Startup sequence failed:', err.message));
 })();

@@ -1010,6 +1010,146 @@ function buildSummaryChannelBlocks(orders, dateLabel, userId) {
   ];
 }
 
+// ── End-of-day channel summary ────────────────────────────────────────────────
+
+function buildEodSummaryBlocks(channelOrders, allOrders, dateLabel) {
+  const blocks = [];
+  const MAX_BLOCKS = 48; // Slack hard limit is 50; keep 2 in reserve
+
+  // ── Cross-channel stats per user (from ALL orders today, all channels) ────
+  const crossChannel = {};
+  for (const o of allOrders) {
+    const u = o._confirmedBy;
+    if (!u) continue;
+    if (!crossChannel[u]) crossChannel[u] = { total: 0, revenue: 0 };
+    crossChannel[u].total++;
+    crossChannel[u].revenue += o.orderTotal || 0;
+  }
+
+  // ── Channel totals ────────────────────────────────────────────────────────
+  const channelRevenue = channelOrders.reduce((s, o) => s + (o.orderTotal || 0), 0);
+  const channelCount   = channelOrders.length;
+
+  // ── Header ────────────────────────────────────────────────────────────────
+  blocks.push({
+    type: 'section',
+    text: {
+      type: 'mrkdwn',
+      text: [
+        `📊  *END-OF-DAY SUMMARY*`,
+        `_${dateLabel}_`,
+        `*${channelCount}* order${channelCount !== 1 ? 's' : ''} confirmed in this channel   ·   Grand total: *${fmt(channelRevenue)}*`,
+      ].join('\n'),
+    },
+  });
+  blocks.push({ type: 'divider' });
+
+  // ── Group by confirmer, preserving chronological order of first order ─────
+  const byUser = new Map();
+  for (const o of channelOrders) {
+    const u = o._confirmedBy || 'unknown';
+    if (!byUser.has(u)) byUser.set(u, []);
+    byUser.get(u).push(o);
+  }
+
+  let blocksUsed = blocks.length;
+
+  for (const [userId, orders] of byUser) {
+    // Estimate blocks this user section needs: 1 header + N orders + 1 divider
+    const blocksNeeded = 1 + orders.length + 1;
+    const canFitAll    = blocksUsed + blocksNeeded <= MAX_BLOCKS - 1; // -1 for possible footer
+    const slotsLeft    = MAX_BLOCKS - 1 - blocksUsed - 2; // -2 for user header + divider
+    const ordersToShow = canFitAll ? orders : orders.slice(0, Math.max(0, slotsLeft));
+
+    if (ordersToShow.length === 0 && !canFitAll) {
+      // Out of space — add truncation footer and stop
+      blocks.push({
+        type: 'context',
+        elements: [{ type: 'mrkdwn', text: `_Summary truncated — use /summary for the full list._` }],
+      });
+      break;
+    }
+
+    // ── User section header ─────────────────────────────────────────────────
+    const userRevenue = orders.reduce((s, o) => s + (o.orderTotal || 0), 0);
+    const cc          = crossChannel[userId] || { total: 0, revenue: 0 };
+    const otherCount  = cc.total  - orders.length;
+    const otherRev    = cc.revenue - userRevenue;
+    const crossNote   = otherCount > 0
+      ? `  ·  _+${otherCount} order${otherCount !== 1 ? 's' : ''} in other channels (${fmt(otherRev)})_`
+      : '';
+
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: userId === 'unknown'
+          ? `*Unknown*  ·  ${orders.length} order${orders.length !== 1 ? 's' : ''}  ·  *${fmt(userRevenue)}*${crossNote}`
+          : `<@${userId}>  ·  ${orders.length} order${orders.length !== 1 ? 's' : ''} here  ·  *${fmt(userRevenue)}*${crossNote}`,
+      },
+    });
+    blocksUsed++;
+
+    // ── Compact per-order lines ─────────────────────────────────────────────
+    for (const order of ordersToShow) {
+      const time = new Date(order._confirmedAt).toLocaleString('en-NG', {
+        timeZone: 'Africa/Lagos', hour: '2-digit', minute: '2-digit', hour12: true,
+      });
+      const customerLine = [
+        order.customer?.name,
+        order.customer?.phone,
+      ].filter(Boolean).join('  ·  ') || '—';
+
+      const isPickup     = order.fulfillment?.type === 'pickup';
+      const fulfillLine  = isPickup
+        ? `◉ Pickup — ${order.fulfillment?.branch || 'Lekki'}`
+        : `🚚 ${order.fulfillment?.zoneName || order.fulfillment?.address || '—'}`;
+
+      const recipientLine = (order.recipient?.name || order.recipient?.phone)
+        ? `  📦 ${[order.recipient.name, order.recipient.phone].filter(Boolean).join('  ·  ')}`
+        : '';
+
+      const scheduledLine = order.scheduledDate
+        ? `  📅 ${new Date(order.scheduledDate + 'T12:00:00').toLocaleDateString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short' })}`
+        : '';
+
+      const itemsLine = (order.items || [])
+        .map(i => `×${i.qty} ${trunc(i.productName, 30)} · _${i.sizeName}_`)
+        .join('   ');
+
+      const orderNumPart = order.orderNumber ? `  \`${order.orderNumber}\`` : '';
+      const refPart      = order.clientReference ? `  \`${order.clientReference}\`` : '';
+
+      blocks.push({
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: [
+            `*${time}*  ·  ${customerLine}${recipientLine}${scheduledLine}`,
+            `${fulfillLine}  ·  *${fmt(order.orderTotal)}*${orderNumPart}${refPart}`,
+            itemsLine || '_no items_',
+          ].join('\n'),
+        },
+      });
+      blocksUsed++;
+    }
+
+    // Truncation note for this user if we couldn't show all their orders
+    if (!canFitAll && ordersToShow.length < orders.length) {
+      blocks.push({
+        type: 'context',
+        elements: [{ type: 'mrkdwn', text: `_…and ${orders.length - ordersToShow.length} more order${orders.length - ordersToShow.length !== 1 ? 's' : ''} — use /summary for the full list._` }],
+      });
+      blocksUsed++;
+    }
+
+    blocks.push({ type: 'divider' });
+    blocksUsed++;
+  }
+
+  return blocks;
+}
+
 module.exports = {
   fmt,
   trunc,
@@ -1025,4 +1165,5 @@ module.exports = {
   buildCitiesModal,
   buildSummaryModal,
   buildSummaryChannelBlocks,
+  buildEodSummaryBlocks,
 };
