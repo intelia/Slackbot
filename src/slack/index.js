@@ -62,6 +62,12 @@ function createApp() {
   app.action("change_date", handlers.handleChangeDateBtn);
   app.view("date_picker_submit", handlers.handleDatePickerSubmit);
 
+  // Payment verification / OTP flow
+  app.action("request_otp", handlers.handleRequestOtp);
+  app.action("enter_otp", handlers.handleEnterOtp);
+  app.view("otp_verify_submit", handlers.handleOtpVerifySubmit);
+  app.action("back_to_review", handlers.handleBackToReview);
+
   // Duplicate warning
   app.action("parse_anyway", handlers.handleParseAnyway);
   app.action("cancel_parse", handlers.handleCancelParse);

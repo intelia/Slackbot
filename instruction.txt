@@ -1,0 +1,67 @@
+Order Payment Verification and Override OTP Flow
+
+Overview
+
+Before submitting an order, the bot should first attempt to get the payment details from zupa-api. If no payment details is found. user should have the option to request for an override OTP. and then verify the otp before submitting the order.
+
+---
+Step 1 — Try to match a payment
+
+POST /payment/order/verify-payment
+Auth: x-slack-token header (existing Slack bot token)
+
+// Request
+{ "customerName": "Grace Okpekpe", "recipientName": "Ololade Lawal", "amount": 16500 }
+
+// Success (200) — payment matched
+{
+  "matched": true,
+  "transactionRef": "SQGOUR...",
+  "amount": 6450,
+  "transactionType": "Purchase",
+  "paidAt": "2026-06-27T13:54:41.000Z"
+}
+
+// No match (404)
+{ "message": "No matching payment found" }
+
+- amount is in Naira (not kobo). The API converts internally.
+- Matching is fuzzy on name — words > 2 chars from customerName are checked against the terminal sender name.
+- Only payments from the last 24 hours with status: pending are searched
+- A matched payment is marked matched so it can't be reused.
+
+---
+Step 2 — If no payment found: request override OTP
+
+POST /payment/order/override-otp
+Auth: x-slack-token
+
+// Request
+{ "clientReference": "GT-0042" }
+
+// Success (200)
+{ "success": true, "message": "OTP sent successfully" }
+
+// Order not found (404)
+{ "message": "Order GT-0042 not found" }
+
+- Generates a 6-digit OTP and sends it via WhatsApp to the designated operator number.
+- The OTP is valid for 30 minutes.
+- Requesting again for the same clientReference invalidates the previous OTP
+
+---
+Step 3 — User collects OTP from operator and verifies it
+
+POST /payment/order/override-otp/verify
+Auth: x-slack-token
+
+// Request
+{ "clientReference": "GT-0042", "otp": "847291" }
+
+// Success (200) — proceed to submit order
+{ "success": true, "message": "OTP verified — order may proceed" }
+
+// Failure (400) — possible messages:
+{ "message": "Invalid OTP" }
+{ "message": "OTP expired" }
+{ "message": "No OTP requested for this order" }

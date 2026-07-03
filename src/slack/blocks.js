@@ -258,6 +258,26 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
     });
   }
 
+  // Payment verification status (populated asynchronously after parse)
+  {
+    const ps = order.paymentStatus;
+    let paymentText;
+    if (ps === 'verifying') {
+      paymentText = '🔍  _Verifying payment…_';
+    } else if (ps === 'verified') {
+      const p    = order.paymentData || {};
+      const paid = p.amount ? fmt(p.amount) + '  ·  ' : '';
+      paymentText = `✅  *Payment verified* — ${paid}Ref: \`${p.transactionRef || '—'}\``;
+    } else if (ps === 'not_found') {
+      paymentText = '⚠️  *No matching payment found* — an override OTP will be required to confirm';
+    } else if (ps === 'error') {
+      paymentText = `⚠️  *Payment check failed* — ${order.paymentError || 'unknown error'}`;
+    }
+    if (paymentText) {
+      blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: paymentText }] });
+    }
+  }
+
   blocks.push({ type: 'divider' });
 
   // Action buttons
@@ -1150,6 +1170,110 @@ function buildEodSummaryBlocks(channelOrders, allOrders, dateLabel) {
   return blocks;
 }
 
+// ── Payment verification / OTP flow blocks ────────────────────────────────────
+
+function buildPaymentNotFoundBlocks(order) {
+  const customer  = order.customer?.name  || 'Unknown';
+  const recipient = order.recipient?.name || customer;
+  const amount    = fmt(order.orderTotal);
+  const ref       = order.clientReference || '—';
+
+  return [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: [
+          `❌  *No matching payment found*`,
+          `Customer: *${customer}*  ·  Recipient: *${recipient}*  ·  Amount: *${amount}*`,
+          `Ref: \`${ref}\``,
+          `\nNo payment from the last 24 hours matches this order. You can request an override OTP from the operator to proceed without a matched payment.`,
+        ].join('\n'),
+      },
+    },
+    {
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: '📲  Request Override OTP' },
+          action_id: 'request_otp',
+          style: 'primary',
+        },
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: 'Back to Review' },
+          action_id: 'back_to_review',
+        },
+      ],
+    },
+  ];
+}
+
+function buildOtpPendingBlocks(order) {
+  const ref = order.clientReference || '—';
+  return [
+    {
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: [
+          `📲  *OTP sent to operator via WhatsApp*`,
+          `Collect the 6-digit code from the designated operator and enter it below.`,
+          `Ref: \`${ref}\`  ·  _OTP is valid for 30 minutes._`,
+        ].join('\n'),
+      },
+    },
+    {
+      type: 'actions',
+      elements: [
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: '🔐  Enter OTP' },
+          action_id: 'enter_otp',
+          style: 'primary',
+        },
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: 'Resend OTP' },
+          action_id: 'request_otp',
+        },
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: 'Back to Review' },
+          action_id: 'back_to_review',
+        },
+      ],
+    },
+  ];
+}
+
+function buildOtpModal(privateMetadata) {
+  return {
+    type: 'modal',
+    callback_id: 'otp_verify_submit',
+    private_metadata: privateMetadata,
+    title: { type: 'plain_text', text: 'Override OTP' },
+    submit: { type: 'plain_text', text: 'Verify' },
+    close:  { type: 'plain_text', text: 'Cancel' },
+    blocks: [
+      {
+        type: 'input',
+        block_id: 'otp_block',
+        label: { type: 'plain_text', text: 'OTP Code' },
+        hint: { type: 'plain_text', text: 'Enter the 6-digit code sent to the operator via WhatsApp.' },
+        element: {
+          type: 'plain_text_input',
+          action_id: 'otp_input',
+          placeholder: { type: 'plain_text', text: '123456' },
+          max_length: 6,
+          min_length: 6,
+        },
+      },
+    ],
+  };
+}
+
 module.exports = {
   fmt,
   trunc,
@@ -1166,4 +1290,7 @@ module.exports = {
   buildSummaryModal,
   buildSummaryChannelBlocks,
   buildEodSummaryBlocks,
+  buildPaymentNotFoundBlocks,
+  buildOtpPendingBlocks,
+  buildOtpModal,
 };

@@ -11,7 +11,13 @@ const {
   normalize,
 } = require("../parser/matcher");
 const { reconcile } = require("../parser/reconciler");
-const { pushToZupa, pushModification } = require("../zupa");
+const {
+  pushToZupa,
+  pushModification,
+  verifyPayment,
+  requestOverrideOtp,
+  verifyOverrideOtp,
+} = require("../zupa");
 const {
   findDuplicate,
   recordOrder,
@@ -37,6 +43,9 @@ const {
   buildProductSearchModal,
   buildModAddSearchModal,
   buildModReviewBlocks,
+  buildPaymentNotFoundBlocks,
+  buildOtpPendingBlocks,
+  buildOtpModal,
   buildMenuModal,
   buildCitiesModal,
   buildSummaryModal,
@@ -172,6 +181,7 @@ async function handleParseOrderSubmit({ ack, body, view, client }) {
   });
 
   const order = await parse(rawText);
+  order.paymentStatus = "verifying";
   const blocks = buildReviewOrderBlocks(order);
 
   if (loading.ts) {
@@ -182,6 +192,7 @@ async function handleParseOrderSubmit({ ack, body, view, client }) {
       blocks,
     });
     saveOrder(channelId, loading.ts, order);
+    verifyPaymentBackground(client, order, channelId, loading.ts);
   }
 }
 
@@ -228,6 +239,7 @@ async function handleMentionOrder({ event, client }) {
 
   const order = await parse(rawText);
   order.slackRootTs = event.ts; // thread root = the mention ts, not the bot's reply ts
+  order.paymentStatus = "verifying";
   const blocks = buildReviewOrderBlocks(order);
 
   if (loading.ts) {
@@ -238,6 +250,7 @@ async function handleMentionOrder({ event, client }) {
       blocks,
     });
     saveOrder(channelId, loading.ts, order);
+    verifyPaymentBackground(client, order, channelId, loading.ts);
   }
 }
 
@@ -634,6 +647,46 @@ async function handleDatePickerSubmit({ ack, body, view, client }) {
 
 // ── Shared: push a confirmed order to Zupa and update the message ────────────
 
+// Fire-and-forget: run payment verification in background, then re-render the review
+function verifyPaymentBackground(client, order, channelId, ts) {
+  const customerName = order.customer?.name || "";
+  const recipientName = order.recipient?.name || customerName;
+
+  verifyPayment(customerName, recipientName, order.orderTotal)
+    .then((match) => {
+      const current = getOrder(channelId, ts);
+      if (!current) return; // order was confirmed/rejected before we finished
+      if (match) {
+        current.paymentStatus = "verified";
+        current.paymentData = match;
+      } else {
+        current.paymentStatus = "not_found";
+      }
+      saveOrder(channelId, ts, current);
+      return client.chat.update({
+        channel: channelId,
+        ts,
+        text: "Review Order",
+        blocks: buildReviewOrderBlocks(current),
+      });
+    })
+    .catch((err) => {
+      const current = getOrder(channelId, ts);
+      if (!current) return;
+      current.paymentStatus = "error";
+      current.paymentError = err.message;
+      saveOrder(channelId, ts, current);
+      return client.chat
+        .update({
+          channel: channelId,
+          ts,
+          text: "Review Order",
+          blocks: buildReviewOrderBlocks(current),
+        })
+        .catch(() => {});
+    });
+}
+
 async function executePush(order, confirmedBy, channelId, ts, client) {
   await client.chat.update({
     channel: channelId,
@@ -722,7 +775,53 @@ async function handleConfirmOrder({ ack, body, action, client }) {
     return;
   }
 
-  await executePush(order, body.user.id, channelId, ts, client);
+  // ── Payment gate ────────────────────────────────────────────────────────────
+  // paymentStatus is set by the background check that runs right after parsing.
+  // If somehow the check is still running (very fast click) or errored, fall back
+  // to a synchronous call so we never block the confirm flow.
+  const paymentStatus = order.paymentStatus;
+
+  if (paymentStatus === "verified") {
+    await executePush(order, body.user.id, channelId, ts, client);
+  } else if (paymentStatus === "not_found") {
+    await client.chat.update({
+      channel: channelId,
+      ts,
+      text: "No matching payment found — override required",
+      blocks: buildPaymentNotFoundBlocks(order),
+    });
+  } else {
+    // 'verifying', 'error', or undefined — run synchronously as fallback
+    let paymentMatch;
+    try {
+      const customerName = order.customer?.name || "";
+      const recipientName = order.recipient?.name || customerName;
+      paymentMatch = await verifyPayment(
+        customerName,
+        recipientName,
+        order.orderTotal,
+      );
+    } catch (err) {
+      console.log(`error verifying payment ${err}`);
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: body.user.id,
+        text: `⚠️ Payment verification error: ${err.message}`,
+      });
+      return;
+    }
+
+    if (paymentMatch) {
+      await executePush(order, body.user.id, channelId, ts, client);
+    } else {
+      await client.chat.update({
+        channel: channelId,
+        ts,
+        text: "No matching payment found — override required",
+        blocks: buildPaymentNotFoundBlocks(order),
+      });
+    }
+  }
 }
 
 // ── Parse anyway: proceed after duplicate warning ─────────────────────────────
@@ -752,6 +851,7 @@ async function handleParseAnyway({ ack, body, client }) {
   });
 
   const order = await parse(pending.rawText);
+  order.paymentStatus = "verifying";
   const blocks = buildReviewOrderBlocks(order);
 
   await client.chat.update({
@@ -761,6 +861,7 @@ async function handleParseAnyway({ ack, body, client }) {
     blocks,
   });
   saveOrder(channelId, warningTs, order);
+  verifyPaymentBackground(client, order, channelId, warningTs);
 }
 
 // ── Cancel parse: dismiss duplicate warning ───────────────────────────────────
@@ -965,9 +1066,10 @@ async function handleModConfirm({ ack, body, client }) {
   const dateLine = mod.newScheduledDate
     ? `  📅  Delivery date: ${mod.newScheduledDate}`
     : null;
-  const recipientLine = mod.newRecipient && (mod.newRecipient.name || mod.newRecipient.phone)
-    ? `  📦  Recipient: ${[mod.newRecipient.name, mod.newRecipient.phone].filter(Boolean).join('  ·  ')}`
-    : null;
+  const recipientLine =
+    mod.newRecipient && (mod.newRecipient.name || mod.newRecipient.phone)
+      ? `  📦  Recipient: ${[mod.newRecipient.name, mod.newRecipient.phone].filter(Boolean).join("  ·  ")}`
+      : null;
   const summary = [
     nameLine,
     phoneLine,
@@ -1157,7 +1259,12 @@ async function handleModAddSearchBtn({ ack, body, client }) {
 
   await client.views.open({
     trigger_id: body.trigger_id,
-    view: buildModAddSearchModal({ channelId, modMessageTs, idx, isUnresolved }),
+    view: buildModAddSearchModal({
+      channelId,
+      modMessageTs,
+      idx,
+      isUnresolved,
+    }),
   });
 }
 
@@ -1185,7 +1292,9 @@ async function handleModAddSearchModalSubmit({ ack, body, view, client }) {
 
   let found = null;
   for (const product of getProductIndex()) {
-    const size = (product.sizes || []).find((s) => s && s.id === selectedSizeId);
+    const size = (product.sizes || []).find(
+      (s) => s && s.id === selectedSizeId,
+    );
     if (size) {
       found = { product, size };
       break;
@@ -1484,19 +1593,24 @@ async function handleDailySummaryCommand({ command, ack, client }) {
   await ack();
 
   const channelId = command.channel_id;
-  const userId    = command.user_id;
+  const userId = command.user_id;
 
   try {
-    const arg        = (command.text || "").trim();
+    const arg = (command.text || "").trim();
     const offsetDays = /^-?\d+$/.test(arg) ? parseInt(arg, 10) : 0;
 
-    const allOrders     = getAllOrdersToday(offsetDays);
+    const allOrders = getAllOrdersToday(offsetDays);
     const channelOrders = allOrders.filter((o) => o._channelId === channelId);
 
-    const dateLabel = new Date(Date.now() + offsetDays * 86_400_000).toLocaleDateString(
-      "en-NG",
-      { timeZone: "Africa/Lagos", weekday: "long", day: "numeric", month: "long", year: "numeric" },
-    );
+    const dateLabel = new Date(
+      Date.now() + offsetDays * 86_400_000,
+    ).toLocaleDateString("en-NG", {
+      timeZone: "Africa/Lagos",
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
 
     if (channelOrders.length === 0) {
       await client.chat.postEphemeral({
@@ -1514,11 +1628,13 @@ async function handleDailySummaryCommand({ command, ack, client }) {
     });
   } catch (err) {
     console.error("[handleDailySummaryCommand]", err);
-    await client.chat.postEphemeral({
-      channel: channelId,
-      user: userId,
-      text: `❌ Could not generate summary: ${err.message}`,
-    }).catch(() => {});
+    await client.chat
+      .postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: `❌ Could not generate summary: ${err.message}`,
+      })
+      .catch(() => {});
   }
 }
 
@@ -1529,13 +1645,13 @@ async function handleRefreshProductsCommand({ command, ack, respond }) {
   try {
     const { productCount, zoneCount } = await forceRefresh();
     await respond({
-      response_type: 'in_channel',
+      response_type: "in_channel",
       text: `✅ Product catalogue refreshed by <@${command.user_id}> — *${productCount} products* and *${zoneCount} delivery zones* loaded.`,
     });
   } catch (err) {
-    console.error('[handleRefreshProductsCommand]', err);
+    console.error("[handleRefreshProductsCommand]", err);
     await respond({
-      response_type: 'ephemeral',
+      response_type: "ephemeral",
       text: `❌ Refresh failed: ${err.message}`,
     });
   }
@@ -1559,6 +1675,98 @@ async function handleSummarySubmit({ ack, body, view, client }) {
   });
 }
 
+// ── Payment / OTP flow handlers ───────────────────────────────────────────────
+
+async function handleRequestOtp({ ack, body, client }) {
+  await ack();
+
+  const channelId = body.container.channel_id;
+  const ts = body.container.message_ts;
+  const order = getOrder(channelId, ts);
+  if (!order) return;
+
+  try {
+    await requestOverrideOtp(order.clientReference);
+  } catch (err) {
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: body.user.id,
+      text: `⚠️ Could not send OTP: ${err.message}`,
+    });
+    return;
+  }
+
+  await client.chat.update({
+    channel: channelId,
+    ts,
+    text: "OTP sent — awaiting verification",
+    blocks: buildOtpPendingBlocks(order),
+  });
+}
+
+async function handleEnterOtp({ ack, body, client }) {
+  await ack();
+
+  const channelId = body.container.channel_id;
+  const ts = body.container.message_ts;
+  const confirmedBy = body.user.id;
+
+  await client.views.open({
+    trigger_id: body.trigger_id,
+    view: buildOtpModal(JSON.stringify({ channelId, ts, confirmedBy })),
+  });
+}
+
+async function handleOtpVerifySubmit({ ack, body, view, client }) {
+  const meta = JSON.parse(view.private_metadata || "{}");
+  const { channelId, ts, confirmedBy } = meta;
+  const otp = view.state.values?.otp_block?.otp_input?.value?.trim() || "";
+  const order = getOrder(channelId, ts);
+
+  if (!order) {
+    await ack({
+      response_action: "errors",
+      errors: {
+        otp_block: "Order state not found — please re-parse the order.",
+      },
+    });
+    return;
+  }
+
+  try {
+    await verifyOverrideOtp(order.clientReference, otp);
+  } catch (err) {
+    // Keep modal open and show error under the input field
+    const msg = err.message.includes("expired")
+      ? "OTP has expired. Close this modal and request a new one."
+      : err.message.includes("No OTP requested")
+        ? 'No OTP was requested for this order. Use the "Request Override OTP" button first.'
+        : `Invalid OTP — ${err.message}`;
+    await ack({ response_action: "errors", errors: { otp_block: msg } });
+    return;
+  }
+
+  await ack();
+  // OTP verified — push to Zupa
+  await executePush(order, confirmedBy, channelId, ts, client);
+}
+
+async function handleBackToReview({ ack, body, client }) {
+  await ack();
+
+  const channelId = body.container.channel_id;
+  const ts = body.container.message_ts;
+  const order = getOrder(channelId, ts);
+  if (!order) return;
+
+  await client.chat.update({
+    channel: channelId,
+    ts,
+    text: "Review Order",
+    blocks: buildReviewOrderBlocks(order),
+  });
+}
+
 // ── Startup: restore pending orders from SQLite ───────────────────────────────
 
 async function restorePendingOrders(client) {
@@ -1571,7 +1779,12 @@ async function restorePendingOrders(client) {
   for (const { channelId, ts, order } of rows) {
     try {
       const blocks = buildReviewOrderBlocks(order);
-      await client.chat.update({ channel: channelId, ts, text: 'Review Order', blocks });
+      await client.chat.update({
+        channel: channelId,
+        ts,
+        text: "Review Order",
+        blocks,
+      });
       orderStateMap.set(stateKey(channelId, ts), order);
       restored++;
       console.log(`[restore] ✓ ${channelId}:${ts}`);
@@ -1629,4 +1842,8 @@ module.exports = {
   handleDailySummaryCommand,
   handleRefreshProductsCommand,
   restorePendingOrders,
+  handleRequestOtp,
+  handleEnterOtp,
+  handleOtpVerifySubmit,
+  handleBackToReview,
 };

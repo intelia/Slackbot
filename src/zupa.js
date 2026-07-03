@@ -29,12 +29,13 @@ function buildZupaPayload(order) {
       name: order.customer.name || null,
       phoneNumber: formatPhone(order.customer.phone),
     },
-    ...(order.recipient && (order.recipient.name || order.recipient.phone) && {
-      recipient: {
-        name: order.recipient.name || null,
-        phoneNumber: formatPhone(order.recipient.phone),
-      },
-    }),
+    ...(order.recipient &&
+      (order.recipient.name || order.recipient.phone) && {
+        recipient: {
+          name: order.recipient.name || null,
+          phoneNumber: formatPhone(order.recipient.phone),
+        },
+      }),
     order: {
       amount: order.orderTotal,
       specialNote: specialNoteParts.join(" | ") || "",
@@ -85,8 +86,9 @@ function buildModPayload(confirmedOrder, mod) {
 
   if (mod.newName || mod.newPhone) {
     payload.updateCustomer = {};
-    if (mod.newName)  payload.updateCustomer.name = mod.newName;
-    if (mod.newPhone) payload.updateCustomer.phoneNumber = formatPhone(mod.newPhone);
+    if (mod.newName) payload.updateCustomer.name = mod.newName;
+    if (mod.newPhone)
+      payload.updateCustomer.phoneNumber = formatPhone(mod.newPhone);
   }
 
   if (mod.addItems.length > 0) {
@@ -138,4 +140,67 @@ async function pushModification(confirmedOrder, mod, modifiedBy) {
   return { payload, raw: res };
 }
 
-module.exports = { pushToZupa, buildZupaPayload, pushModification, buildModPayload };
+// ── Payment verification & OTP ────────────────────────────────────────────────
+
+async function paymentFetch(endpoint, body) {
+  const url = `${process.env.ZUPA_PRODUCTS_API}/${endpoint}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${process.env.ZUPA_PRODUCTS_TOKEN}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch((err) => {
+    console.log(`[payment Fetch] No response from Zupa API`, err);
+  });
+  console.log(`[payment Fetch] response from ${endpoint} : `, data, body);
+  return { status: res.status, data };
+}
+
+// Returns payment object if matched, null if no match (404), throws on other errors.
+async function verifyPayment(customerName, recipientName, amount) {
+  const { status, data } = await paymentFetch("payment/order/verify-payment", {
+    customerName,
+    recipientName,
+    amount,
+  });
+  if (status === 200 && data.matched) return data;
+  if (status === 404) return null;
+  throw new Error(
+    data.message || `Payment verification failed (HTTP ${status})`,
+  );
+}
+
+// Sends a 6-digit OTP to the operator's WhatsApp. Throws on error.
+async function requestOverrideOtp(clientReference) {
+  const { status, data } = await paymentFetch("payment/order/override-otp", {
+    clientReference,
+  });
+  if (status === 200 && data.success) return true;
+  throw new Error(data.message || `OTP request failed (HTTP ${status})`);
+}
+
+// Verifies the OTP. Returns true on success, throws with API message on failure.
+async function verifyOverrideOtp(clientReference, otp) {
+  const { status, data } = await paymentFetch(
+    "payment/order/override-otp/verify",
+    {
+      clientReference,
+      otp,
+    },
+  );
+  if (status === 200 && data.success) return true;
+  throw new Error(data.message || `OTP verification failed (HTTP ${status})`);
+}
+
+module.exports = {
+  pushToZupa,
+  buildZupaPayload,
+  pushModification,
+  buildModPayload,
+  verifyPayment,
+  requestOverrideOtp,
+  verifyOverrideOtp,
+};
