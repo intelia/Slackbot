@@ -138,4 +138,19 @@ async function pushModification(confirmedOrder, mod, modifiedBy) {
   return { payload, raw: res };
 }
 
-module.exports = { pushToZupa, buildZupaPayload, pushModification, buildModPayload };
+// Returns the kitchen daily-summary object for the given YYYY-MM-DD date.
+// Throws on non-2xx; caller can treat null yesterdayData as unavailable.
+async function fetchKitchenDailySummary(date) {
+  const url = new URL(`${process.env.ZUPA_PRODUCTS_API}/kitchen-api/daily-summary`);
+  if (date) url.searchParams.set('date', date);
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${process.env.ZUPA_PRODUCTS_TOKEN}` },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.message || `Kitchen summary API failed (HTTP ${res.status})`);
+  }
+  return res.json();
+}
+
+module.exports = { pushToZupa, buildZupaPayload, pushModification, buildModPayload, fetchKitchenDailySummary };

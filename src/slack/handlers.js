@@ -11,7 +11,7 @@ const {
   normalize,
 } = require("../parser/matcher");
 const { reconcile } = require("../parser/reconciler");
-const { pushToZupa, pushModification } = require("../zupa");
+const { pushToZupa, pushModification, fetchKitchenDailySummary } = require("../zupa");
 const {
   findDuplicate,
   recordOrder,
@@ -41,7 +41,7 @@ const {
   buildCitiesModal,
   buildSummaryModal,
   buildSummaryChannelBlocks,
-  buildEodSummaryBlocks,
+  buildDailyReportBlocks,
 } = require("./blocks");
 
 // ── In-memory order state (backed by SQLite for restart recovery) ─────────────
@@ -1483,41 +1483,54 @@ async function handleSummaryCommand({ command, ack, client }) {
 async function handleDailySummaryCommand({ command, ack, client }) {
   await ack();
 
-  const channelId = command.channel_id;
-  const userId    = command.user_id;
+  const channelId  = command.channel_id;
+  const userId     = command.user_id;
 
   try {
     const arg        = (command.text || "").trim();
     const offsetDays = /^-?\d+$/.test(arg) ? parseInt(arg, 10) : 0;
 
-    const allOrders     = getAllOrdersToday(offsetDays);
-    const channelOrders = allOrders.filter((o) => o._channelId === channelId);
+    const lagosDate = (off) =>
+      new Date(Date.now() + off * 86_400_000)
+        .toLocaleDateString("en-CA", { timeZone: "Africa/Lagos" });
 
     const dateLabel = new Date(Date.now() + offsetDays * 86_400_000).toLocaleDateString(
       "en-NG",
       { timeZone: "Africa/Lagos", weekday: "long", day: "numeric", month: "long", year: "numeric" },
     );
 
-    if (channelOrders.length === 0) {
+    // Fetch kitchen data and CSR orders in parallel
+    const [kitchenData, yesterdayData, allOrders] = await Promise.all([
+      fetchKitchenDailySummary(lagosDate(offsetDays)).catch(err => {
+        console.error("[daily-summary] Kitchen API:", err.message);
+        return null;
+      }),
+      fetchKitchenDailySummary(lagosDate(offsetDays - 1)).catch(() => null),
+      Promise.resolve(getAllOrdersToday(offsetDays)),
+    ]);
+
+    const channelOrders = allOrders.filter((o) => o._channelId === channelId);
+
+    if (!kitchenData && channelOrders.length === 0) {
       await client.chat.postEphemeral({
         channel: channelId,
         user: userId,
-        text: `📊 No orders confirmed in this channel on ${dateLabel}.`,
+        text: `📊 No data available for ${dateLabel}.`,
       });
       return;
     }
 
     await client.chat.postMessage({
       channel: channelId,
-      text: `📊 Channel summary — ${dateLabel}  ·  ${channelOrders.length} order${channelOrders.length !== 1 ? "s" : ""}`,
-      blocks: buildEodSummaryBlocks(channelOrders, allOrders, dateLabel),
+      text: `📊 Daily Operations Report — ${dateLabel}`,
+      blocks: buildDailyReportBlocks(kitchenData, yesterdayData, channelOrders, dateLabel),
     });
   } catch (err) {
     console.error("[handleDailySummaryCommand]", err);
     await client.chat.postEphemeral({
       channel: channelId,
       user: userId,
-      text: `❌ Could not generate summary: ${err.message}`,
+      text: `❌ Could not generate report: ${err.message}`,
     }).catch(() => {});
   }
 }

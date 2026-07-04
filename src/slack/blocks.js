@@ -1012,139 +1012,186 @@ function buildSummaryChannelBlocks(orders, dateLabel, userId) {
 
 // ── End-of-day channel summary ────────────────────────────────────────────────
 
-function buildEodSummaryBlocks(channelOrders, allOrders, dateLabel) {
+// ── Daily operations report ───────────────────────────────────────────────────
+// kitchenData  : response from GET /kitchen-api/daily-summary (today)
+// yesterdayData: same endpoint for yesterday, or null if unavailable
+// csrOrders    : array from getAllOrdersToday() filtered to this channel
+
+const DEPT_DISPLAY = {
+  KITCHEN:      'Kitchen',
+  BAKERY:       'Bakery',
+  PACKINGBAKERY:'Packing',
+  BREAKFAST:    'Breakfast',
+};
+
+function buildDailyReportBlocks(kitchenData, yesterdayData, csrOrders, dateLabel) {
+  const k      = kitchenData || {};
+  const orders = k.orders || {};
   const blocks = [];
-  const MAX_BLOCKS = 48; // Slack hard limit is 50; keep 2 in reserve
-
-  // ── Cross-channel stats per user (from ALL orders today, all channels) ────
-  const crossChannel = {};
-  for (const o of allOrders) {
-    const u = o._confirmedBy;
-    if (!u) continue;
-    if (!crossChannel[u]) crossChannel[u] = { total: 0, revenue: 0 };
-    crossChannel[u].total++;
-    crossChannel[u].revenue += o.orderTotal || 0;
-  }
-
-  // ── Channel totals ────────────────────────────────────────────────────────
-  const channelRevenue = channelOrders.reduce((s, o) => s + (o.orderTotal || 0), 0);
-  const channelCount   = channelOrders.length;
 
   // ── Header ────────────────────────────────────────────────────────────────
+  blocks.push({
+    type: 'header',
+    text: { type: 'plain_text', text: '📊  Daily Operations Report' },
+  });
+  blocks.push({
+    type: 'context',
+    elements: [{ type: 'mrkdwn', text: `_${dateLabel}_` }],
+  });
+  blocks.push({ type: 'divider' });
+
+  // ── Order Summary ─────────────────────────────────────────────────────────
+  const total    = orders.processed ?? 0;
+  const onTime   = orders.onTime    ?? 0;
+  const delayed  = orders.delayed   ?? 0;
+  const csrCount = csrOrders.length;
+  const pct      = total > 0 ? ((onTime / total) * 100).toFixed(1) : '—';
+  const avgMins  = k.avgProcessingTimeMinutes != null
+    ? `${Math.round(k.avgProcessingTimeMinutes)} mins` : '—';
+
   blocks.push({
     type: 'section',
     text: {
       type: 'mrkdwn',
       text: [
-        `📊  *END-OF-DAY SUMMARY*`,
-        `_${dateLabel}_`,
-        `*${channelCount}* order${channelCount !== 1 ? 's' : ''} confirmed in this channel   ·   Grand total: *${fmt(channelRevenue)}*`,
+        '*📦  Order Summary*',
+        `• Total Orders: *${total}*`,
+        `• Total Orders by CSRs: *${csrCount}*`,
+        `• Orders Completed On Time: *${onTime}*  (${pct}%)`,
+        `• Delayed Orders: *${delayed}*`,
+        `• Avg Processing Time: *${avgMins}*`,
       ].join('\n'),
     },
   });
   blocks.push({ type: 'divider' });
 
-  // ── Group by confirmer, preserving chronological order of first order ─────
-  const byUser = new Map();
-  for (const o of channelOrders) {
-    const u = o._confirmedBy || 'unknown';
-    if (!byUser.has(u)) byUser.set(u, []);
-    byUser.get(u).push(o);
-  }
+  // ── Department Performance ─────────────────────────────────────────────────
+  const depts = Object.entries(k.departments || {})
+    .filter(([, d]) => (d.totalScanned || 0) > 0);
 
-  let blocksUsed = blocks.length;
+  if (depts.length > 0) {
+    const deptLines = depts.map(([key, d]) => {
+      const name = DEPT_DISPLAY[key] || key;
+      return [
+        `*${name}*`,
+        `• Avg Time: *${Math.round(d.avgTimeMinutes)} mins*  (SLA: ${d.slaMinutes} mins)`,
+        `• SLA Compliance: *${d.complianceRate}%*  (${d.onTime} on time, ${d.delayed} delayed)`,
+      ].join('\n');
+    });
 
-  for (const [userId, orders] of byUser) {
-    // Estimate blocks this user section needs: 1 header + N orders + 1 divider
-    const blocksNeeded = 1 + orders.length + 1;
-    const canFitAll    = blocksUsed + blocksNeeded <= MAX_BLOCKS - 1; // -1 for possible footer
-    const slotsLeft    = MAX_BLOCKS - 1 - blocksUsed - 2; // -2 for user header + divider
-    const ordersToShow = canFitAll ? orders : orders.slice(0, Math.max(0, slotsLeft));
-
-    if (ordersToShow.length === 0 && !canFitAll) {
-      // Out of space — add truncation footer and stop
-      blocks.push({
-        type: 'context',
-        elements: [{ type: 'mrkdwn', text: `_Summary truncated — use /summary for the full list._` }],
-      });
-      break;
-    }
-
-    // ── User section header ─────────────────────────────────────────────────
-    const userRevenue = orders.reduce((s, o) => s + (o.orderTotal || 0), 0);
-    const cc          = crossChannel[userId] || { total: 0, revenue: 0 };
-    const otherCount  = cc.total  - orders.length;
-    const otherRev    = cc.revenue - userRevenue;
-    const crossNote   = otherCount > 0
-      ? `  ·  _+${otherCount} order${otherCount !== 1 ? 's' : ''} in other channels (${fmt(otherRev)})_`
-      : '';
+    // Fastest = lowest avg time; Slowest = highest avg time
+    const sorted  = [...depts].sort((a, b) => a[1].avgTimeMinutes - b[1].avgTimeMinutes);
+    const fastest = DEPT_DISPLAY[sorted[0][0]] || sorted[0][0];
+    const slowest = DEPT_DISPLAY[sorted[sorted.length - 1][0]] || sorted[sorted.length - 1][0];
 
     blocks.push({
       type: 'section',
       text: {
         type: 'mrkdwn',
-        text: userId === 'unknown'
-          ? `*Unknown*  ·  ${orders.length} order${orders.length !== 1 ? 's' : ''}  ·  *${fmt(userRevenue)}*${crossNote}`
-          : `<@${userId}>  ·  ${orders.length} order${orders.length !== 1 ? 's' : ''} here  ·  *${fmt(userRevenue)}*${crossNote}`,
+        text: [
+          '*🏭  Department Performance*',
+          '',
+          deptLines.join('\n\n'),
+          '',
+          `🏆 *Fastest:* ${fastest}   🐢 *Slowest:* ${slowest}`,
+        ].join('\n'),
       },
     });
-    blocksUsed++;
-
-    // ── Compact per-order lines ─────────────────────────────────────────────
-    for (const order of ordersToShow) {
-      const time = new Date(order._confirmedAt).toLocaleString('en-NG', {
-        timeZone: 'Africa/Lagos', hour: '2-digit', minute: '2-digit', hour12: true,
-      });
-      const customerLine = [
-        order.customer?.name,
-        order.customer?.phone,
-      ].filter(Boolean).join('  ·  ') || '—';
-
-      const isPickup     = order.fulfillment?.type === 'pickup';
-      const fulfillLine  = isPickup
-        ? `◉ Pickup — ${order.fulfillment?.branch || 'Lekki'}`
-        : `🚚 ${order.fulfillment?.zoneName || order.fulfillment?.address || '—'}`;
-
-      const recipientLine = (order.recipient?.name || order.recipient?.phone)
-        ? `  📦 ${[order.recipient.name, order.recipient.phone].filter(Boolean).join('  ·  ')}`
-        : '';
-
-      const scheduledLine = order.scheduledDate
-        ? `  📅 ${new Date(order.scheduledDate + 'T12:00:00').toLocaleDateString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short' })}`
-        : '';
-
-      const itemsLine = (order.items || [])
-        .map(i => `×${i.qty} ${trunc(i.productName, 30)} · _${i.sizeName}_`)
-        .join('   ');
-
-      const orderNumPart = order.orderNumber ? `  \`${order.orderNumber}\`` : '';
-      const refPart      = order.clientReference ? `  \`${order.clientReference}\`` : '';
-
-      blocks.push({
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: [
-            `*${time}*  ·  ${customerLine}${recipientLine}${scheduledLine}`,
-            `${fulfillLine}  ·  *${fmt(order.orderTotal)}*${orderNumPart}${refPart}`,
-            itemsLine || '_no items_',
-          ].join('\n'),
-        },
-      });
-      blocksUsed++;
-    }
-
-    // Truncation note for this user if we couldn't show all their orders
-    if (!canFitAll && ordersToShow.length < orders.length) {
-      blocks.push({
-        type: 'context',
-        elements: [{ type: 'mrkdwn', text: `_…and ${orders.length - ordersToShow.length} more order${orders.length - ordersToShow.length !== 1 ? 's' : ''} — use /summary for the full list._` }],
-      });
-      blocksUsed++;
-    }
-
     blocks.push({ type: 'divider' });
-    blocksUsed++;
+  }
+
+  // ── CSR Performance ────────────────────────────────────────────────────────
+  const byUser = {};
+  for (const o of csrOrders) {
+    const u = o._confirmedBy || 'unknown';
+    byUser[u] = (byUser[u] || 0) + 1;
+  }
+  const csrSorted = Object.entries(byUser).sort((a, b) => b[1] - a[1]);
+
+  if (csrSorted.length > 0) {
+    const csrLines = csrSorted.map(([uid, cnt]) =>
+      uid === 'unknown' ? `Unknown — *${cnt}* orders` : `<@${uid}> — *${cnt}* orders`
+    );
+    const top    = csrSorted[0];
+    const bottom = csrSorted[csrSorted.length - 1];
+    const footer = [
+      top    ? `🏆 *Top Performer:* <@${top[0]}> (${top[1]})` : null,
+      bottom && bottom[0] !== top[0]
+        ? `📉 *Lowest Performer:* <@${bottom[0]}> (${bottom[1]})` : null,
+    ].filter(Boolean);
+
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: ['*👥  CSR Performance*', ...csrLines, '', ...footer].filter(s => s !== '').join('\n'),
+      },
+    });
+    blocks.push({ type: 'divider' });
+  }
+
+  // ── Operational Alerts ────────────────────────────────────────────────────
+  const alerts  = k.alerts || {};
+  const longest = alerts.longestDelayedOrder;
+  const alertLines = [];
+
+  if (alerts.primaryDelayOrigin && delayed > 0) {
+    const origin = DEPT_DISPLAY[alerts.primaryDelayOrigin] || alerts.primaryDelayOrigin;
+    alertLines.push(`• *${delayed}* delayed order${delayed !== 1 ? 's' : ''} — primary origin: *${origin}*`);
+  }
+  if (longest) {
+    const dept = DEPT_DISPLAY[longest.delayOriginDept] || longest.delayOriginDept || '—';
+    alertLines.push(
+      `• Longest delay: *${longest.totalMinutes} mins*  (Order \`${longest.orderNumber}\`, origin: ${dept}, excess: ${longest.excessMinutes} mins)`
+    );
+  }
+
+  if (alertLines.length > 0) {
+    blocks.push({
+      type: 'section',
+      text: { type: 'mrkdwn', text: ['*⚠️  Operational Alerts*', ...alertLines].join('\n') },
+    });
+    blocks.push({ type: 'divider' });
+  }
+
+  // ── Comparison to Yesterday ────────────────────────────────────────────────
+  if (yesterdayData) {
+    const y      = yesterdayData.orders || {};
+    const yAvg   = yesterdayData.avgProcessingTimeMinutes ?? 0;
+    const yTotal = y.processed ?? 0;
+    const ySLA   = yTotal > 0 ? (y.onTime ?? 0) / yTotal * 100 : 0;
+    const todaySLA = total > 0 ? onTime / total * 100 : 0;
+
+    function diffLine(label, todayVal, yVal, unit = '', lowerIsBetter = false) {
+      const diff = todayVal - yVal;
+      if (diff === 0) return `→ *${label}:* No change`;
+      const better  = lowerIsBetter ? diff < 0 : diff > 0;
+      const arrow   = better ? '↑' : '↓';
+      const sign    = diff > 0 ? '+' : '';
+      const display = Number.isInteger(diff) ? diff : parseFloat(diff.toFixed(1));
+      return `${arrow} *${label}:* ${sign}${display}${unit ? ' ' + unit : ''}`;
+    }
+
+    const orderDiff  = total - yTotal;
+    const orderPct   = yTotal > 0 ? ((orderDiff / yTotal) * 100).toFixed(1) : null;
+    const orderArrow = orderDiff === 0 ? '→' : orderDiff > 0 ? '↑' : '↓';
+    const orderLine  = orderDiff === 0
+      ? `→ *Orders:* No change`
+      : `${orderArrow} *Orders:* ${orderDiff > 0 ? '+' : ''}${orderDiff}${orderPct ? ` (${orderDiff > 0 ? '+' : ''}${orderPct}%)` : ''}`;
+
+    blocks.push({
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: [
+          '*📈  Comparison to Yesterday*',
+          orderLine,
+          diffLine('Avg Processing Time', Math.round(k.avgProcessingTimeMinutes ?? 0), Math.round(yAvg), 'mins', true),
+          diffLine('SLA Compliance', parseFloat(todaySLA.toFixed(1)), parseFloat(ySLA.toFixed(1)), '%'),
+          diffLine('Delayed Orders', delayed, y.delayed ?? 0, '', true),
+        ].join('\n'),
+      },
+    });
   }
 
   return blocks;
@@ -1165,5 +1212,5 @@ module.exports = {
   buildCitiesModal,
   buildSummaryModal,
   buildSummaryChannelBlocks,
-  buildEodSummaryBlocks,
+  buildDailyReportBlocks,
 };

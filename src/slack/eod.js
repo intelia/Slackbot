@@ -2,7 +2,8 @@
 
 const cron = require('node-cron');
 const { getAllOrdersToday, getMetaValue, setMetaValue } = require('../data/db');
-const { buildEodSummaryBlocks } = require('./blocks');
+const { buildDailyReportBlocks } = require('./blocks');
+const { fetchKitchenDailySummary } = require('../zupa');
 const { CURRENT_VERSION, getChangesSince } = require('../changelog');
 
 // ── Restart / update notification ─────────────────────────────────────────────
@@ -103,19 +104,36 @@ async function postRestartNotification(client, restoreResult = { restored: 0, fa
 
 // ── End-of-day summary ────────────────────────────────────────────────────────
 
+function lagosDateString(offsetDays = 0) {
+  return new Date(Date.now() + offsetDays * 86_400_000)
+    .toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }); // YYYY-MM-DD
+}
+
 async function postEodSummaries(client) {
   const allOrders = getAllOrdersToday();
-
-  if (allOrders.length === 0) {
-    console.log('[eod] No orders confirmed today — skipping summary posts.');
-    return;
-  }
-
   const dateLabel = new Date().toLocaleDateString('en-NG', {
     timeZone: 'Africa/Lagos',
     weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   });
 
+  // Fetch kitchen operational data (today + yesterday for comparison)
+  let kitchenData    = null;
+  let yesterdayData  = null;
+  try {
+    [kitchenData, yesterdayData] = await Promise.all([
+      fetchKitchenDailySummary(lagosDateString(0)),
+      fetchKitchenDailySummary(lagosDateString(-1)).catch(() => null),
+    ]);
+  } catch (err) {
+    console.error('[eod] Kitchen summary API failed:', err.message);
+  }
+
+  if (!kitchenData && allOrders.length === 0) {
+    console.log('[eod] No kitchen data and no orders today — skipping summary posts.');
+    return;
+  }
+
+  // Group CSR orders by channel
   const byChannel = new Map();
   for (const order of allOrders) {
     const ch = order._channelId;
@@ -124,24 +142,35 @@ async function postEodSummaries(client) {
     byChannel.get(ch).push(order);
   }
 
-  console.log(`[eod] Posting summaries to ${byChannel.size} channel(s) — ${allOrders.length} total orders.`);
+  // Post the same operational report to every active channel;
+  // CSR section is filtered per channel
+  const targets = byChannel.size > 0
+    ? Array.from(byChannel.keys())
+    : (process.env.NOTIFY_CHANNELS || '').split(',').map(s => s.trim()).filter(Boolean);
+
+  if (targets.length === 0) {
+    console.log('[eod] No channels to post to.');
+    return;
+  }
+
+  console.log(`[eod] Posting daily report to ${targets.length} channel(s).`);
 
   const results = await Promise.allSettled(
-    Array.from(byChannel.entries()).map(async ([channelId, channelOrders]) => {
-      const blocks = buildEodSummaryBlocks(channelOrders, allOrders, dateLabel);
+    targets.map(async channelId => {
+      const channelOrders = byChannel.get(channelId) || [];
+      const blocks = buildDailyReportBlocks(kitchenData, yesterdayData, channelOrders, dateLabel);
       await client.chat.postMessage({
         channel: channelId,
-        text: `📊 End-of-day summary — ${dateLabel}  ·  ${channelOrders.length} order${channelOrders.length !== 1 ? 's' : ''}`,
+        text: `📊 Daily Operations Report — ${dateLabel}`,
         blocks,
       });
-      console.log(`[eod] ✓ Posted to ${channelId} (${channelOrders.length} orders)`);
+      console.log(`[eod] ✓ Posted to ${channelId}`);
     })
   );
 
   for (const [i, result] of results.entries()) {
     if (result.status === 'rejected') {
-      const channelId = Array.from(byChannel.keys())[i];
-      console.error(`[eod] ✗ Failed to post to ${channelId}:`, result.reason?.message || result.reason);
+      console.error(`[eod] ✗ Failed to post to ${targets[i]}:`, result.reason?.message || result.reason);
     }
   }
 }
