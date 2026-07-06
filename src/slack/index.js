@@ -17,6 +17,8 @@ function createApp() {
   app.command("/cities", handlers.handleCitiesCommand);
   app.command("/my-orders", handlers.handleSummaryCommand);
   app.command("/daily-summary", handlers.handleDailySummaryCommand);
+  app.command("/weekly-summary", handlers.handleWeeklySummaryCommand);
+  app.command("/monthly-summary", handlers.handleMonthlySummaryCommand);
   app.command("/refresh-products", handlers.handleRefreshProductsCommand);
 
   // ── Events ──────────────────────────────────────────────────────────────────

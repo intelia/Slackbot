@@ -1,0 +1,383 @@
+Monthly Reporting on Slack by Slack Bot 
+
+Content of Monthly Report 
+
+Executive Summary 
+
+This part just highlights Improvements in key areas 
+
+• Total Orders for that month 
+• Average time and how it improved or declined compared to last month 
+• Dept. (s) that was or were the fastest this month 
+• what dept or stage contributed the most to delayed orders 
+• when we had the most volume of orders (peak period)
+
+Order Summary
+
+• Total Orders:
+• Total Orders by CSRs: 
+• Orders Completed On Time:
+• Delayed Orders:
+• Avg Processing Time:
+
+Department Performance 
+
+Kitchen
+• Avg Time:
+• Orders On Time:
+• Orders Delayed:
+
+Bakery
+• Avg Time
+• Orders On Time:
+• Orders Delayed:
+
+Packing
+• Avg Time
+• Orders On Time:
+• Orders Delayed:
+
+Fastest Department
+Slowest Department
+
+CSR Performance
+• Grace (total number of orders processed by them)
+• Esther (total number of orders processed by them)
+• Onyinye (total number of orders processed by them)
+…
+
+N.B It should be arranged from highest to lowest
+
+Operational Alerts
+• Where delay originated  (processing, packing, dispatch)
+• Longest delayed order time
+
+Comparison to Last Month
+• Total Orders (difference between yesterday and today) 
+• Avg Processing Time (difference between yesterday and today)
+• Total Completed Orders On time (difference between yesterday and today)
+• Total Delayed Orders (difference between yesterday and today)
+
+Prototype  
+
+📊 Monthly Operations Report | July 2026, July 31st, 2026 | 9:10 PM
+
+━━━━━━━━━━━━━━━━━━
+📌 EXECUTIVE SUMMARY
+━━━━━━━━━━━━━━━━━━
+
+• 12,468 orders were processed during June. 
+• Average processing time improved by 5 minutes (6%) compared to June, while delayed orders reduced by 14%. 
+• Packing remained the fastest department for the month
+• Processing contributed 60% of all delayed orders.
+• Saturday lunch periods consistently recorded the highest order volumes.
+
+━━━━━━━━━━━━━━━━━━
+📦 ORDER SUMMARY
+━━━━━━━━━━━━━━━━━━
+
+• Total Orders: 12,468
+• Total Orders Processed by CSRs: 8,963
+• Orders Completed On Time: 11,947
+• Delayed Orders: 521
+• Average Processing Time: 38 mins
+
+━━━━━━━━━━━━━━━━━━
+🏭 DEPARTMENT PERFORMANCE
+━━━━━━━━━━━━━━━━━━
+
+Kitchen
+• Average Time: 29 mins
+• Orders On Time: 4,812
+• Orders Delayed: 287
+
+Bakery
+• Average Time: 41 mins
+• Orders On Time: 3,951
+• Orders Delayed: 161
+
+Packing
+• Average Time: 11 mins
+• Orders On Time: 3,184
+• Orders Delayed: 73
+
+🏆 Fastest Department: Packing
+🐢 Slowest Department: Bakery
+
+━━━━━━━━━━━━━━━━━━
+👥 CSR PERFORMANCE
+━━━━━━━━━━━━━━━━━━
+
+Grace ............. 1,486 Orders
+Esther ............ 1,432 Orders
+Onyinye ........... 1,367 Orders
+Sarah ............. 1,294 Orders
+David ............. 1,178 Orders
+
+━━━━━━━━━━━━━━━━━━
+⚠️ OPERATIONAL ALERTS
+━━━━━━━━━━━━━━━━━━
+
+• Most delays originated during Processing (312 orders).
+• Longest Delayed Order: 132 mins.
+
+━━━━━━━━━━━━━━━━━━
+📈 COMPARISON TO LAST MONTH
+━━━━━━━━━━━━━━━━━━
+
+✅ Total Orders: +1,276
+❌  Orders Completed On Time: -100
+✅ Average Processing Time: -5 mins
+🟰 Delayed Orders: 87
+━━━━━━━━━━━━━━━━━━
+Powered by Gourmet Twist Operations Bot 
+
+=======================================================================================
+
+Weekly Reporting on Slack by Slack Bot 
+
+Content of Weekly Report 
+
+Order Summary
+
+• Total Orders
+• Total Orders by CSRs 
+• Orders Completed On Time
+• Delayed Orders
+• Avg Processing Time
+• Unconfirmed Payments
+
+Department Performance 
+
+Kitchen
+• Avg Time:
+• Orders On Time:
+• Orders Delayed:
+
+Bakery
+• Avg Time
+• Orders On Time:
+• Orders Delayed:
+
+Packing
+• Avg Time
+• Orders On Time:
+• Orders Delayed:
+
+Fastest Department
+Slowest Department
+
+CSR Performance
+• Grace (total number of orders processed by them)
+• Esther (total number of orders processed by them)
+• Onyinye (total number of orders processed by them)
+…
+
+N.B It should be arranged from highest to lowest
+
+Unconfirmed payments
+• Order number | Price 
+Authorised by: (The person who provided the override pin)
+
+• Order number | Price 
+Authorised by: (The person who provided the override pin)
+
+
+Operational Alerts
+• Where delay originated  (processing, packing, dispatch)
+• Longest delayed order time
+
+Comparison to Last Week
+• Total Orders (difference between yesterday and today) 
+• Avg Processing Time (difference between yesterday and today)
+• Total Completed Orders On time (difference between yesterday and today)
+• Total Delayed Orders (difference between yesterday and today)
+
+Prototype  
+
+📊 Weekly Operations Report | Week 27 Ending 4 Jul 2026 | 9:05 PM
+
+━━━━━━━━━━━━━━━━━━
+📦 ORDER SUMMARY
+━━━━━━━━━━━━━━━━━━
+
+• Total Orders: 2,987
+• Total Orders Processed by CSRs: 2,108
+• Orders Completed On Time: 2,851
+• Delayed Orders: 136
+• Average Processing Time: 39 mins
+• Unconfirmed Payments: 7
+━━━━━━━━━━━━━━━━━━
+🏭 DEPARTMENT PERFORMANCE
+━━━━━━━━━━━━━━━━━━
+
+Kitchen
+• Average Time: 29 mins
+• Orders On Time: 1,146
+• Orders Delayed: 82
+
+Bakery
+• Average Time: 42 mins
+• Orders On Time: 932
+• Orders Delayed: 38
+
+Packing
+• Average Time: 11 mins
+• Orders On Time: 773
+• Orders Delayed: 16
+
+🏆 Fastest Department: Packing
+🐢 Slowest Department: Bakery
+
+━━━━━━━━━━━━━━━━━━
+👥 CSR PERFORMANCE
+━━━━━━━━━━━━━━━━━━
+
+Grace ............. 482 Orders
+Esther ............ 451 Orders
+Onyinye ........... 426 Orders
+Sarah ............. 395 Orders
+David ............. 354 Orders
+
+━━━━━━━━━━━━━━━━━━
+💳 UNCONFIRMED PAYMENTS
+━━━━━━━━━━━━━━━━━━
+
+Order 0062-104221 | ₦18,500
+Authorised By: Udoka Udoka 
+
+Order 0063-104287 | ₦9,700
+Authorised By: Uche Uzoka 
+
+Order 0064-104365 | ₦26,000
+Authorised By: Tella 
+
+... (remaining orders)
+
+━━━━━━━━━━━━━━━━━━
+⚠️ OPERATIONAL ALERTS
+━━━━━━━━━━━━━━━━━━
+
+• Most delays originated during Processing (91 orders).
+• Longest Delayed Order: 118 mins.
+
+━━━━━━━━━━━━━━━━━━
+📈 COMPARISON TO LAST WEEK
+━━━━━━━━━━━━━━━━━━
+
+✅ Total Orders: +214
+✅ Orders Completed On Time: +198
+🟰  Average Processing Time: 3 mins (no change)
+❌ Delayed Orders: +11
+━━━━━━━━━━━━━━━━━━
+Powered by Gourmet Twist Operations Bot 
+
+
+==========================================================
+
+Daily Reporting on Slack by Slack Bot 
+
+Content of Daily Report 
+
+Order Summary
+
+• Total Orders
+• Total Orders by CSRs 
+• Orders Completed On Time
+• Delayed Orders
+• Avg Processing Time
+
+Department Performance 
+
+Kitchen
+• Avg Time:
+• Orders On Time:
+• Orders Delayed:
+
+Bakery
+• Avg Time
+• Orders On Time:
+• Orders Delayed:
+
+
+Packing
+• Avg Time
+• Orders On Time:
+• Orders Delayed:
+
+Fastest Department
+Slowest Department
+
+CSR Performance
+• Grace (total number of orders processed by them)
+• Esther (total number of orders processed by them)
+• Onyinye (total number of orders processed by them)
+…
+
+N.B It should be arranged from highest to lowest
+
+Operational Alerts
+• Where delay originated  (processing, packing, dispatch)
+• Longest delayed order time
+
+Comparison to Yesterday
+• Total Orders (difference between yesterday and today) 
+• Avg Processing Time (difference between yesterday and today)
+• Total Completed Orders On time (difference between yesterday and today)
+• Total Delayed Orders (difference between yesterday and today)
+
+Prototype  
+
+📊 Daily Operations Report | 4 Jul 2026 | 9:00 PM
+
+━━━━━━━━━━━━━━━━━━
+📦 Order Summary
+━━━━━━━━━━━━━━━━━━
+• Total Orders: 432
+• Total Orders by CSRs: 300
+• Orders Completed On Time: 410 (94.9%)
+• Delayed Orders: 22
+• Avg Processing Time: 41 mins
+
+━━━━━━━━━━━━━━━━━━
+🏭 Department Performance
+━━━━━━━━━━━━━━━━━━
+Kitchen
+• Avg Time: 28 mins (SLA: 30)
+• SLA Compliance: 96%
+
+Bakery
+• Avg Time: 43 mins (SLA: 45)
+• SLA Compliance: 94%
+
+Packing
+• Avg Time: 12 mins (SLA: 15)
+• SLA Compliance: 99%
+
+🏆 Fastest Department: Packing
+🐢 Slowest Department: Bakery
+
+━━━━━━━━━━━━━━━━━━
+👥 CSR Performance
+━━━━━━━━━━━━━━━━━━
+John – 58 orders
+Sarah – 52 orders
+David – 47 orders
+...
+
+━━━━━━━━━━━━━━━━━━
+⚠️ Operational Alerts
+━━━━━━━━━━━━━━━━━━
+• 18 of 22 delayed orders originated during processing.
+• Longest delayed order: 96 mins.
+
+━━━━━━━━━━━━━━━━━━
+📈 Comparison to Yesterday
+━━━━━━━━━━━━━━━━━━
+✅ Orders: +7%
+❌ Avg Processing Time: -4 mins
+✅Total Completed Orders On time: +2
+🟰  Delayed Orders: 11 (no change)
+━━━━━━━━━━━━━━━━━━
+Powered by Gourmet Twist Operations Bot
+

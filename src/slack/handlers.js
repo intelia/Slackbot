@@ -11,7 +11,7 @@ const {
   normalize,
 } = require("../parser/matcher");
 const { reconcile } = require("../parser/reconciler");
-const { pushToZupa, pushModification, fetchKitchenDailySummary } = require("../zupa");
+const { pushToZupa, pushModification, fetchKitchenSummary } = require("../zupa");
 const {
   findDuplicate,
   recordOrder,
@@ -20,6 +20,11 @@ const {
   updateConfirmedOrder,
   getDailySummary,
   getAllOrdersToday,
+  getOrdersForPeriod,
+  getOtpOverridesForPeriod,
+  lagosWeekBounds,
+  lagosMonthBounds,
+  isLastDayOfLagosMonth,
   savePendingOrder,
   deletePendingOrder,
   getAllPendingOrders,
@@ -42,6 +47,8 @@ const {
   buildSummaryModal,
   buildSummaryChannelBlocks,
   buildDailyReportBlocks,
+  buildWeeklyReportBlocks,
+  buildMonthlyReportBlocks,
 } = require("./blocks");
 
 // ── In-memory order state (backed by SQLite for restart recovery) ─────────────
@@ -1501,11 +1508,11 @@ async function handleDailySummaryCommand({ command, ack, client }) {
 
     // Fetch kitchen data and CSR orders in parallel
     const [kitchenData, yesterdayData, allOrders] = await Promise.all([
-      fetchKitchenDailySummary(lagosDate(offsetDays)).catch(err => {
+      fetchKitchenSummary(lagosDate(offsetDays), lagosDate(offsetDays)).catch(err => {
         console.error("[daily-summary] Kitchen API:", err.message);
         return null;
       }),
-      fetchKitchenDailySummary(lagosDate(offsetDays - 1)).catch(() => null),
+      fetchKitchenSummary(lagosDate(offsetDays - 1), lagosDate(offsetDays - 1)).catch(() => null),
       Promise.resolve(getAllOrdersToday(offsetDays)),
     ]);
 
@@ -1532,6 +1539,108 @@ async function handleDailySummaryCommand({ command, ack, client }) {
       user: userId,
       text: `❌ Could not generate report: ${err.message}`,
     }).catch(() => {});
+  }
+}
+
+// ── /weekly-summary ───────────────────────────────────────────────────────────
+
+async function handleWeeklySummaryCommand({ command, ack, client }) {
+  await ack();
+  const channelId = command.channel_id;
+  const userId    = command.user_id;
+  try {
+    const lagosDate = (off) =>
+      new Date(Date.now() + off * 86_400_000).toLocaleDateString("en-CA", { timeZone: "Africa/Lagos" });
+
+    const [y, m, d] = lagosDate(0).split('-').map(Number);
+    const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+    const daysFromMonday = dow === 0 ? 6 : dow - 1;
+
+    const thisStart = lagosDate(-daysFromMonday);
+    const thisEnd   = lagosDate(0);
+    const prevStart = lagosDate(-daysFromMonday - 7);
+    const prevEnd   = lagosDate(-7);
+
+    const { startMs, endMs } = lagosWeekBounds();
+    const allOrders  = getOrdersForPeriod(startMs, endMs);
+    const otpOrders  = getOtpOverridesForPeriod(startMs, endMs);
+    const channelOrders = allOrders.filter(o => o._channelId === channelId);
+
+    const mondayUtc  = new Date(Date.UTC(y, m - 1, d - daysFromMonday));
+    const thursday   = new Date(mondayUtc.getTime() + 3 * 86_400_000);
+    const yearStart  = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1));
+    const weekNum    = Math.ceil((((thursday - yearStart) / 86_400_000) + 1) / 7);
+    const endStr     = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' });
+    const periodLabel = `Week ${weekNum}  ·  Ending ${endStr}`;
+
+    const [kitchenData, prevData] = await Promise.all([
+      fetchKitchenSummary(thisStart, thisEnd).catch(err => { console.error('[weekly-summary] Kitchen API:', err.message); return null; }),
+      fetchKitchenSummary(prevStart, prevEnd).catch(() => null),
+    ]);
+
+    if (!kitchenData && channelOrders.length === 0) {
+      await client.chat.postEphemeral({ channel: channelId, user: userId, text: `📊 No data available for ${periodLabel}.` });
+      return;
+    }
+
+    await client.chat.postMessage({
+      channel: channelId,
+      text: `📊 Weekly Operations Report — ${periodLabel}`,
+      blocks: buildWeeklyReportBlocks(kitchenData, prevData, channelOrders, otpOrders, periodLabel),
+    });
+  } catch (err) {
+    console.error('[handleWeeklySummaryCommand]', err);
+    await client.chat.postEphemeral({ channel: channelId, user: userId, text: `❌ Could not generate report: ${err.message}` }).catch(() => {});
+  }
+}
+
+// ── /monthly-summary ──────────────────────────────────────────────────────────
+
+async function handleMonthlySummaryCommand({ command, ack, client }) {
+  await ack();
+  const channelId = command.channel_id;
+  const userId    = command.user_id;
+  try {
+    const lagosDate = (off) =>
+      new Date(Date.now() + off * 86_400_000).toLocaleDateString("en-CA", { timeZone: "Africa/Lagos" });
+
+    const [year, month] = lagosDate(0).split('-').map(Number);
+    const thisStart = `${String(year).padStart(4,'0')}-${String(month).padStart(2,'0')}-01`;
+    const thisEnd   = lagosDate(0);
+
+    const lastMonthDate = new Date(Date.UTC(year, month - 2, 1));
+    const lmy = lastMonthDate.getUTCFullYear();
+    const lmm = lastMonthDate.getUTCMonth() + 1;
+    const prevStart = `${String(lmy).padStart(4,'0')}-${String(lmm).padStart(2,'0')}-01`;
+    const lastDay   = new Date(Date.UTC(year, month - 1, 0));
+    const prevEnd   = lastDay.toLocaleDateString('en-CA', { timeZone: 'UTC' });
+
+    const { startMs, endMs } = lagosMonthBounds();
+    const allOrders    = getOrdersForPeriod(startMs, endMs);
+    const channelOrders = allOrders.filter(o => o._channelId === channelId);
+
+    const monthLabel  = new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString('en-NG', { month: 'long', year: 'numeric' });
+    const dateLabel   = new Date().toLocaleDateString('en-NG', { timeZone: 'Africa/Lagos', day: 'numeric', month: 'long', year: 'numeric' });
+    const periodLabel = `${monthLabel}  ·  ${dateLabel}`;
+
+    const [kitchenData, prevData] = await Promise.all([
+      fetchKitchenSummary(thisStart, thisEnd).catch(err => { console.error('[monthly-summary] Kitchen API:', err.message); return null; }),
+      fetchKitchenSummary(prevStart, prevEnd).catch(() => null),
+    ]);
+
+    if (!kitchenData && channelOrders.length === 0) {
+      await client.chat.postEphemeral({ channel: channelId, user: userId, text: `📊 No data available for ${periodLabel}.` });
+      return;
+    }
+
+    await client.chat.postMessage({
+      channel: channelId,
+      text: `📊 Monthly Operations Report — ${monthLabel}`,
+      blocks: buildMonthlyReportBlocks(kitchenData, prevData, channelOrders, periodLabel),
+    });
+  } catch (err) {
+    console.error('[handleMonthlySummaryCommand]', err);
+    await client.chat.postEphemeral({ channel: channelId, user: userId, text: `❌ Could not generate report: ${err.message}` }).catch(() => {});
   }
 }
 
@@ -1640,6 +1749,8 @@ module.exports = {
   handleSummaryCommand,
   handleSummarySubmit,
   handleDailySummaryCommand,
+  handleWeeklySummaryCommand,
+  handleMonthlySummaryCommand,
   handleRefreshProductsCommand,
   restorePendingOrders,
 };

@@ -1012,42 +1012,195 @@ function buildSummaryChannelBlocks(orders, dateLabel, userId) {
 
 // ── End-of-day channel summary ────────────────────────────────────────────────
 
-// ── Daily operations report ───────────────────────────────────────────────────
-// kitchenData  : response from GET /kitchen-api/daily-summary (today)
-// yesterdayData: same endpoint for yesterday, or null if unavailable
-// csrOrders    : array from getAllOrdersToday() filtered to this channel
+// ── Operations reports (daily / weekly / monthly) ─────────────────────────────
 
 const DEPT_DISPLAY = {
-  KITCHEN:      'Kitchen',
-  BAKERY:       'Bakery',
-  PACKINGBAKERY:'Packing',
-  BREAKFAST:    'Breakfast',
+  KITCHEN:       'Kitchen',
+  BAKERY:        'Bakery',
+  PACKINGBAKERY: 'Packing',
+  BREAKFAST:     'Breakfast',
 };
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+function _buildDeptText(k) {
+  const depts = Object.entries(k.departments || {})
+    .filter(([, d]) => (d.totalScanned || 0) > 0);
+  if (depts.length === 0) return null;
+
+  const deptLines = depts.map(([key, d]) => {
+    const name = DEPT_DISPLAY[key] || key;
+    return [
+      `*${name}*`,
+      `• Avg Time: *${Math.round(d.avgTimeMinutes)} mins*`,
+      `• Orders On Time: *${d.onTime ?? 0}*`,
+      `• Orders Delayed: *${d.delayed ?? 0}*`,
+    ].join('\n');
+  });
+
+  const sorted  = [...depts].sort((a, b) => a[1].avgTimeMinutes - b[1].avgTimeMinutes);
+  const fastest = DEPT_DISPLAY[sorted[0][0]] || sorted[0][0];
+  const slowest = DEPT_DISPLAY[sorted[sorted.length - 1][0]] || sorted[sorted.length - 1][0];
+
+  return {
+    text: [
+      '*🏭  Department Performance*', '',
+      deptLines.join('\n\n'), '',
+      `🏆 *Fastest:* ${fastest}   🐢 *Slowest:* ${slowest}`,
+    ].join('\n'),
+    sorted,
+  };
+}
+
+function _buildCsrText(csrOrders) {
+  if (csrOrders.length === 0) return null;
+  const byUser = {};
+  for (const o of csrOrders) {
+    const u = o._confirmedBy || 'unknown';
+    byUser[u] = (byUser[u] || 0) + 1;
+  }
+  const sorted = Object.entries(byUser).sort((a, b) => b[1] - a[1]);
+  const lines  = sorted.map(([uid, cnt]) =>
+    uid === 'unknown' ? `Unknown — *${cnt}* orders` : `<@${uid}> — *${cnt}* orders`
+  );
+  const top    = sorted[0];
+  const bottom = sorted[sorted.length - 1];
+  const footer = [
+    top ? `🏆 *Top Performer:* <@${top[0]}> (${top[1]})` : null,
+    bottom && bottom[0] !== top[0] ? `📉 *Lowest Performer:* <@${bottom[0]}> (${bottom[1]})` : null,
+  ].filter(Boolean);
+  return ['*👥  CSR Performance*', ...lines, '', ...footer].filter(s => s !== '').join('\n');
+}
+
+function _buildAlertsText(k) {
+  const alerts  = k.alerts || {};
+  const delayed = (k.orders || {}).delayed ?? 0;
+  const lines   = [];
+
+  if (alerts.primaryDelayOrigin && delayed > 0) {
+    const origin = DEPT_DISPLAY[alerts.primaryDelayOrigin] || alerts.primaryDelayOrigin;
+    lines.push(`• *${delayed}* delayed order${delayed !== 1 ? 's' : ''} — primary origin: *${origin}*`);
+  }
+  if (alerts.longestDelayedOrder) {
+    const lo   = alerts.longestDelayedOrder;
+    const dept = DEPT_DISPLAY[lo.delayOriginDept] || lo.delayOriginDept || '—';
+    lines.push(`• Longest delay: *${lo.totalMinutes} mins*  (Order \`${lo.orderNumber}\`, origin: ${dept})`);
+  }
+
+  return lines.length > 0 ? ['*⚠️  Operational Alerts*', ...lines].join('\n') : null;
+}
+
+function _cmpIcon(diff, lowerIsBetter = false) {
+  if (diff === 0) return '🟰';
+  return (lowerIsBetter ? diff < 0 : diff > 0) ? '✅' : '❌';
+}
+
+function _cmpLine(icon, label, diff, currentValue, unit = '') {
+  const u = unit ? ` ${unit}` : '';
+  if (diff === 0) return `${icon} ${label}: ${currentValue}${u} (no change)`;
+  return `${icon} ${label}: ${diff > 0 ? '+' : ''}${diff}${u}`;
+}
+
+function _buildComparisonText(today, prev, label) {
+  if (!prev) return null;
+  const ko = (today || {}).orders || {};
+  const po = (prev  || {}).orders || {};
+
+  const totalDiff   = (ko.processed ?? 0) - (po.processed ?? 0);
+  const onTimeDiff  = (ko.onTime    ?? 0) - (po.onTime    ?? 0);
+  const delayedDiff = (ko.delayed   ?? 0) - (po.delayed   ?? 0);
+  const avgNow      = Math.round((today || {}).avgProcessingTimeMinutes ?? 0);
+  const avgDiff     = avgNow - Math.round((prev || {}).avgProcessingTimeMinutes ?? 0);
+
+  return [
+    `*📈  Comparison to ${label}*`,
+    _cmpLine(_cmpIcon(totalDiff),         'Total Orders',             totalDiff,   ko.processed ?? 0),
+    _cmpLine(_cmpIcon(onTimeDiff),        'Orders Completed On Time', onTimeDiff,  ko.onTime    ?? 0),
+    _cmpLine(_cmpIcon(avgDiff,    true),  'Avg Processing Time',      avgDiff,     avgNow, 'mins'),
+    _cmpLine(_cmpIcon(delayedDiff,true),  'Delayed Orders',           delayedDiff, ko.delayed   ?? 0),
+  ].join('\n');
+}
+
+function _buildOtpPaymentsText(otpOrders) {
+  const lines = ['*💳  Unconfirmed Payments*'];
+  if (otpOrders.length === 0) {
+    lines.push('• None this week.');
+    return lines.join('\n');
+  }
+  for (const o of otpOrders) {
+    const orderNum = o.orderNumber || o.clientReference || '—';
+    const price    = o.orderTotal ? `₦${Number(o.orderTotal).toLocaleString('en-NG')}` : '—';
+    const auth     = o._otpAuthorizedBy ? `<@${o._otpAuthorizedBy}>` : '—';
+    lines.push(`• Order \`${orderNum}\` | ${price}\n  Authorised by: ${auth}`);
+  }
+  return lines.join('\n');
+}
+
+function _buildExecutiveSummaryText(k, prevData, periodName) {
+  const ko      = (k || {}).orders || {};
+  const total   = ko.processed ?? 0;
+  const bullets = [];
+
+  bullets.push(`• *${total.toLocaleString()}* orders were processed during ${periodName}.`);
+
+  if (prevData) {
+    const avgNow  = Math.round(k.avgProcessingTimeMinutes ?? 0);
+    const avgPrev = Math.round(prevData.avgProcessingTimeMinutes ?? 0);
+    const avgDiff = avgNow - avgPrev;
+    const avgPct  = avgPrev > 0 ? Math.abs(Math.round((avgDiff / avgPrev) * 100)) : null;
+    if (avgDiff < 0) {
+      bullets.push(`• Average processing time *improved by ${Math.abs(avgDiff)} mins*${avgPct ? ` (${avgPct}%)` : ''} compared to last month.`);
+    } else if (avgDiff > 0) {
+      bullets.push(`• Average processing time *increased by ${avgDiff} mins*${avgPct ? ` (${avgPct}%)` : ''} compared to last month.`);
+    }
+
+    const delayedNow  = ko.delayed ?? 0;
+    const delayedPrev = ((prevData.orders || {}).delayed ?? 0);
+    const delayedDiff = delayedNow - delayedPrev;
+    if (delayedDiff < 0 && delayedPrev > 0) {
+      const pct = Math.abs(Math.round((delayedDiff / delayedPrev) * 100));
+      bullets.push(`• Delayed orders *reduced by ${pct}%* compared to last month.`);
+    }
+  }
+
+  const depts = Object.entries(k.departments || {})
+    .filter(([, d]) => (d.totalScanned || 0) > 0);
+  if (depts.length > 0) {
+    const sorted      = [...depts].sort((a, b) => a[1].avgTimeMinutes - b[1].avgTimeMinutes);
+    const fastestName = DEPT_DISPLAY[sorted[0][0]] || sorted[0][0];
+    bullets.push(`• *${fastestName}* was the fastest department for the month.`);
+
+    const totalDelayed = depts.reduce((s, [, d]) => s + (d.delayed ?? 0), 0);
+    if (totalDelayed > 0) {
+      const mostDelayed = depts.reduce((a, b) => (b[1].delayed ?? 0) > (a[1].delayed ?? 0) ? b : a, depts[0]);
+      const pct  = Math.round((mostDelayed[1].delayed ?? 0) / totalDelayed * 100);
+      const name = DEPT_DISPLAY[mostDelayed[0]] || mostDelayed[0];
+      bullets.push(`• *${name}* contributed *${pct}%* of all delayed orders.`);
+    }
+  }
+
+  return bullets.join('\n');
+}
+
+const _footer = { type: 'context', elements: [{ type: 'mrkdwn', text: '_Powered by Gourmet Twist Operations Bot_' }] };
+
+// ── Daily Operations Report ───────────────────────────────────────────────────
 
 function buildDailyReportBlocks(kitchenData, yesterdayData, csrOrders, dateLabel) {
   const k      = kitchenData || {};
   const orders = k.orders || {};
   const blocks = [];
 
-  // ── Header ────────────────────────────────────────────────────────────────
-  blocks.push({
-    type: 'header',
-    text: { type: 'plain_text', text: '📊  Daily Operations Report' },
-  });
-  blocks.push({
-    type: 'context',
-    elements: [{ type: 'mrkdwn', text: `_${dateLabel}_` }],
-  });
+  blocks.push({ type: 'header', text: { type: 'plain_text', text: '📊  Daily Operations Report' } });
+  blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: `_${dateLabel}_` }] });
   blocks.push({ type: 'divider' });
 
-  // ── Order Summary ─────────────────────────────────────────────────────────
   const total    = orders.processed ?? 0;
   const onTime   = orders.onTime    ?? 0;
   const delayed  = orders.delayed   ?? 0;
   const csrCount = csrOrders.length;
   const pct      = total > 0 ? ((onTime / total) * 100).toFixed(1) : '—';
-  const avgMins  = k.avgProcessingTimeMinutes != null
-    ? `${Math.round(k.avgProcessingTimeMinutes)} mins` : '—';
+  const avgMins  = k.avgProcessingTimeMinutes != null ? `${Math.round(k.avgProcessingTimeMinutes)} mins` : '—';
 
   blocks.push({
     type: 'section',
@@ -1065,135 +1218,164 @@ function buildDailyReportBlocks(kitchenData, yesterdayData, csrOrders, dateLabel
   });
   blocks.push({ type: 'divider' });
 
-  // ── Department Performance ─────────────────────────────────────────────────
-  const depts = Object.entries(k.departments || {})
-    .filter(([, d]) => (d.totalScanned || 0) > 0);
-
-  if (depts.length > 0) {
-    const deptLines = depts.map(([key, d]) => {
-      const name = DEPT_DISPLAY[key] || key;
-      return [
-        `*${name}*`,
-        `• Avg Time: *${Math.round(d.avgTimeMinutes)} mins*  (SLA: ${d.slaMinutes} mins)`,
-        `• SLA Compliance: *${d.complianceRate}%*  (${d.onTime} on time, ${d.delayed} delayed)`,
-      ].join('\n');
-    });
-
-    // Fastest = lowest avg time; Slowest = highest avg time
-    const sorted  = [...depts].sort((a, b) => a[1].avgTimeMinutes - b[1].avgTimeMinutes);
-    const fastest = DEPT_DISPLAY[sorted[0][0]] || sorted[0][0];
-    const slowest = DEPT_DISPLAY[sorted[sorted.length - 1][0]] || sorted[sorted.length - 1][0];
-
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: [
-          '*🏭  Department Performance*',
-          '',
-          deptLines.join('\n\n'),
-          '',
-          `🏆 *Fastest:* ${fastest}   🐢 *Slowest:* ${slowest}`,
-        ].join('\n'),
-      },
-    });
+  const deptResult = _buildDeptText(k);
+  if (deptResult) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: deptResult.text } });
     blocks.push({ type: 'divider' });
   }
 
-  // ── CSR Performance ────────────────────────────────────────────────────────
-  const byUser = {};
-  for (const o of csrOrders) {
-    const u = o._confirmedBy || 'unknown';
-    byUser[u] = (byUser[u] || 0) + 1;
-  }
-  const csrSorted = Object.entries(byUser).sort((a, b) => b[1] - a[1]);
-
-  if (csrSorted.length > 0) {
-    const csrLines = csrSorted.map(([uid, cnt]) =>
-      uid === 'unknown' ? `Unknown — *${cnt}* orders` : `<@${uid}> — *${cnt}* orders`
-    );
-    const top    = csrSorted[0];
-    const bottom = csrSorted[csrSorted.length - 1];
-    const footer = [
-      top    ? `🏆 *Top Performer:* <@${top[0]}> (${top[1]})` : null,
-      bottom && bottom[0] !== top[0]
-        ? `📉 *Lowest Performer:* <@${bottom[0]}> (${bottom[1]})` : null,
-    ].filter(Boolean);
-
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: ['*👥  CSR Performance*', ...csrLines, '', ...footer].filter(s => s !== '').join('\n'),
-      },
-    });
+  const csrText = _buildCsrText(csrOrders);
+  if (csrText) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: csrText } });
     blocks.push({ type: 'divider' });
   }
 
-  // ── Operational Alerts ────────────────────────────────────────────────────
-  const alerts  = k.alerts || {};
-  const longest = alerts.longestDelayedOrder;
-  const alertLines = [];
-
-  if (alerts.primaryDelayOrigin && delayed > 0) {
-    const origin = DEPT_DISPLAY[alerts.primaryDelayOrigin] || alerts.primaryDelayOrigin;
-    alertLines.push(`• *${delayed}* delayed order${delayed !== 1 ? 's' : ''} — primary origin: *${origin}*`);
-  }
-  if (longest) {
-    const dept = DEPT_DISPLAY[longest.delayOriginDept] || longest.delayOriginDept || '—';
-    alertLines.push(
-      `• Longest delay: *${longest.totalMinutes} mins*  (Order \`${longest.orderNumber}\`, origin: ${dept}, excess: ${longest.excessMinutes} mins)`
-    );
-  }
-
-  if (alertLines.length > 0) {
-    blocks.push({
-      type: 'section',
-      text: { type: 'mrkdwn', text: ['*⚠️  Operational Alerts*', ...alertLines].join('\n') },
-    });
+  const alertsText = _buildAlertsText(k);
+  if (alertsText) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: alertsText } });
     blocks.push({ type: 'divider' });
   }
 
-  // ── Comparison to Yesterday ────────────────────────────────────────────────
-  if (yesterdayData) {
-    const y      = yesterdayData.orders || {};
-    const yAvg   = yesterdayData.avgProcessingTimeMinutes ?? 0;
-    const yTotal = y.processed ?? 0;
-    const ySLA   = yTotal > 0 ? (y.onTime ?? 0) / yTotal * 100 : 0;
-    const todaySLA = total > 0 ? onTime / total * 100 : 0;
-
-    function diffLine(label, todayVal, yVal, unit = '', lowerIsBetter = false) {
-      const diff = todayVal - yVal;
-      if (diff === 0) return `→ *${label}:* No change`;
-      const better  = lowerIsBetter ? diff < 0 : diff > 0;
-      const arrow   = better ? '↑' : '↓';
-      const sign    = diff > 0 ? '+' : '';
-      const display = Number.isInteger(diff) ? diff : parseFloat(diff.toFixed(1));
-      return `${arrow} *${label}:* ${sign}${display}${unit ? ' ' + unit : ''}`;
-    }
-
-    const orderDiff  = total - yTotal;
-    const orderPct   = yTotal > 0 ? ((orderDiff / yTotal) * 100).toFixed(1) : null;
-    const orderArrow = orderDiff === 0 ? '→' : orderDiff > 0 ? '↑' : '↓';
-    const orderLine  = orderDiff === 0
-      ? `→ *Orders:* No change`
-      : `${orderArrow} *Orders:* ${orderDiff > 0 ? '+' : ''}${orderDiff}${orderPct ? ` (${orderDiff > 0 ? '+' : ''}${orderPct}%)` : ''}`;
-
-    blocks.push({
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: [
-          '*📈  Comparison to Yesterday*',
-          orderLine,
-          diffLine('Avg Processing Time', Math.round(k.avgProcessingTimeMinutes ?? 0), Math.round(yAvg), 'mins', true),
-          diffLine('SLA Compliance', parseFloat(todaySLA.toFixed(1)), parseFloat(ySLA.toFixed(1)), '%'),
-          diffLine('Delayed Orders', delayed, y.delayed ?? 0, '', true),
-        ].join('\n'),
-      },
-    });
+  const cmpText = _buildComparisonText(kitchenData, yesterdayData, 'Yesterday');
+  if (cmpText) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: cmpText } });
   }
 
+  blocks.push(_footer);
+  return blocks;
+}
+
+// ── Weekly Operations Report ──────────────────────────────────────────────────
+// otpOrders: from getOtpOverridesForPeriod — orders confirmed via OTP override
+
+function buildWeeklyReportBlocks(kitchenData, prevData, csrOrders, otpOrders, periodLabel) {
+  const k      = kitchenData || {};
+  const orders = k.orders || {};
+  const blocks = [];
+
+  blocks.push({ type: 'header', text: { type: 'plain_text', text: '📊  Weekly Operations Report' } });
+  blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: `_${periodLabel}_` }] });
+  blocks.push({ type: 'divider' });
+
+  const total    = orders.processed ?? 0;
+  const onTime   = orders.onTime    ?? 0;
+  const delayed  = orders.delayed   ?? 0;
+  const csrCount = csrOrders.length;
+  const otpCount = (otpOrders || []).length;
+  const avgMins  = k.avgProcessingTimeMinutes != null ? `${Math.round(k.avgProcessingTimeMinutes)} mins` : '—';
+
+  blocks.push({
+    type: 'section',
+    text: {
+      type: 'mrkdwn',
+      text: [
+        '*📦  Order Summary*',
+        `• Total Orders: *${total.toLocaleString()}*`,
+        `• Total Orders by CSRs: *${csrCount.toLocaleString()}*`,
+        `• Orders Completed On Time: *${onTime.toLocaleString()}*`,
+        `• Delayed Orders: *${delayed.toLocaleString()}*`,
+        `• Avg Processing Time: *${avgMins}*`,
+        `• Unconfirmed Payments: *${otpCount}*`,
+      ].join('\n'),
+    },
+  });
+  blocks.push({ type: 'divider' });
+
+  const deptResult = _buildDeptText(k);
+  if (deptResult) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: deptResult.text } });
+    blocks.push({ type: 'divider' });
+  }
+
+  const csrText = _buildCsrText(csrOrders);
+  if (csrText) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: csrText } });
+    blocks.push({ type: 'divider' });
+  }
+
+  blocks.push({ type: 'section', text: { type: 'mrkdwn', text: _buildOtpPaymentsText(otpOrders || []) } });
+  blocks.push({ type: 'divider' });
+
+  const alertsText = _buildAlertsText(k);
+  if (alertsText) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: alertsText } });
+    blocks.push({ type: 'divider' });
+  }
+
+  const cmpText = _buildComparisonText(kitchenData, prevData, 'Last Week');
+  if (cmpText) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: cmpText } });
+  }
+
+  blocks.push(_footer);
+  return blocks;
+}
+
+// ── Monthly Operations Report ─────────────────────────────────────────────────
+
+function buildMonthlyReportBlocks(kitchenData, prevData, csrOrders, periodLabel) {
+  const k      = kitchenData || {};
+  const orders = k.orders || {};
+  const blocks = [];
+
+  blocks.push({ type: 'header', text: { type: 'plain_text', text: '📊  Monthly Operations Report' } });
+  blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: `_${periodLabel}_` }] });
+  blocks.push({ type: 'divider' });
+
+  // Executive Summary — extract just the month name from periodLabel (first word)
+  const monthName = periodLabel.split(/[\s·,]+/)[0];
+  const execText  = _buildExecutiveSummaryText(k, prevData, monthName);
+  if (execText) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: ['*📌  Executive Summary*', execText].join('\n') } });
+    blocks.push({ type: 'divider' });
+  }
+
+  const total    = orders.processed ?? 0;
+  const onTime   = orders.onTime    ?? 0;
+  const delayed  = orders.delayed   ?? 0;
+  const csrCount = csrOrders.length;
+  const avgMins  = k.avgProcessingTimeMinutes != null ? `${Math.round(k.avgProcessingTimeMinutes)} mins` : '—';
+
+  blocks.push({
+    type: 'section',
+    text: {
+      type: 'mrkdwn',
+      text: [
+        '*📦  Order Summary*',
+        `• Total Orders: *${total.toLocaleString()}*`,
+        `• Total Orders by CSRs: *${csrCount.toLocaleString()}*`,
+        `• Orders Completed On Time: *${onTime.toLocaleString()}*`,
+        `• Delayed Orders: *${delayed.toLocaleString()}*`,
+        `• Avg Processing Time: *${avgMins}*`,
+      ].join('\n'),
+    },
+  });
+  blocks.push({ type: 'divider' });
+
+  const deptResult = _buildDeptText(k);
+  if (deptResult) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: deptResult.text } });
+    blocks.push({ type: 'divider' });
+  }
+
+  const csrText = _buildCsrText(csrOrders);
+  if (csrText) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: csrText } });
+    blocks.push({ type: 'divider' });
+  }
+
+  const alertsText = _buildAlertsText(k);
+  if (alertsText) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: alertsText } });
+    blocks.push({ type: 'divider' });
+  }
+
+  const cmpText = _buildComparisonText(kitchenData, prevData, 'Last Month');
+  if (cmpText) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: cmpText } });
+  }
+
+  blocks.push(_footer);
   return blocks;
 }
 
@@ -1213,4 +1395,6 @@ module.exports = {
   buildSummaryModal,
   buildSummaryChannelBlocks,
   buildDailyReportBlocks,
+  buildWeeklyReportBlocks,
+  buildMonthlyReportBlocks,
 };

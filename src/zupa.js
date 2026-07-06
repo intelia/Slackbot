@@ -29,12 +29,13 @@ function buildZupaPayload(order) {
       name: order.customer.name || null,
       phoneNumber: formatPhone(order.customer.phone),
     },
-    ...(order.recipient && (order.recipient.name || order.recipient.phone) && {
-      recipient: {
-        name: order.recipient.name || null,
-        phoneNumber: formatPhone(order.recipient.phone),
-      },
-    }),
+    ...(order.recipient &&
+      (order.recipient.name || order.recipient.phone) && {
+        recipient: {
+          name: order.recipient.name || null,
+          phoneNumber: formatPhone(order.recipient.phone),
+        },
+      }),
     order: {
       amount: order.orderTotal,
       specialNote: specialNoteParts.join(" | ") || "",
@@ -85,8 +86,9 @@ function buildModPayload(confirmedOrder, mod) {
 
   if (mod.newName || mod.newPhone) {
     payload.updateCustomer = {};
-    if (mod.newName)  payload.updateCustomer.name = mod.newName;
-    if (mod.newPhone) payload.updateCustomer.phoneNumber = formatPhone(mod.newPhone);
+    if (mod.newName) payload.updateCustomer.name = mod.newName;
+    if (mod.newPhone)
+      payload.updateCustomer.phoneNumber = formatPhone(mod.newPhone);
   }
 
   if (mod.addItems.length > 0) {
@@ -138,19 +140,33 @@ async function pushModification(confirmedOrder, mod, modifiedBy) {
   return { payload, raw: res };
 }
 
-// Returns the kitchen daily-summary object for the given YYYY-MM-DD date.
-// Throws on non-2xx; caller can treat null yesterdayData as unavailable.
-async function fetchKitchenDailySummary(date) {
-  const url = new URL(`${process.env.ZUPA_PRODUCTS_API}/kitchen-api/daily-summary`);
-  if (date) url.searchParams.set('date', date);
+// Returns kitchen summary for a date range (YYYY-MM-DD strings).
+// For a single day, pass the same date for both startDate and endDate.
+// Throws on non-2xx; callers should .catch(() => null) for optional periods.
+async function fetchKitchenSummary(startDate, endDate) {
+  const url = new URL(
+    `${process.env.ZUPA_PRODUCTS_API}/kitchen-api/daily-summary`,
+  );
+  url.searchParams.set("startDate", startDate);
+  url.searchParams.set("endDate", endDate);
+  console.log(`[Zupa] Fetching kitchen summary ${startDate}→${endDate}`);
   const res = await fetch(url.toString(), {
     headers: { Authorization: `Bearer ${process.env.ZUPA_PRODUCTS_TOKEN}` },
   });
+  console.log(`[Zupa] Kitchen summary response: ${res.status}`);
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.message || `Kitchen summary API failed (HTTP ${res.status})`);
+    throw new Error(
+      err.message || `Kitchen summary API failed (HTTP ${res.status})`,
+    );
   }
   return res.json();
 }
 
-module.exports = { pushToZupa, buildZupaPayload, pushModification, buildModPayload, fetchKitchenDailySummary };
+module.exports = {
+  pushToZupa,
+  buildZupaPayload,
+  pushModification,
+  buildModPayload,
+  fetchKitchenSummary,
+};

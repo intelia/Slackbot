@@ -30,8 +30,10 @@ db.exec(`
   );
 `);
 
-// Migrate: add confirmed_by if this is an existing database without it
+// Migrations
 try { db.exec('ALTER TABLE live_orders ADD COLUMN confirmed_by TEXT'); } catch (_) {}
+try { db.exec('ALTER TABLE live_orders ADD COLUMN otp_override INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+try { db.exec('ALTER TABLE live_orders ADD COLUMN otp_authorized_by TEXT'); } catch (_) {}
 
 const LAGOS_OFFSET_MS = 60 * 60 * 1000; // Africa/Lagos = UTC+1
 
@@ -40,6 +42,33 @@ function lagosDateBounds(offsetDays = 0) {
   const localMidnight = localNow - (localNow % 86_400_000);
   const startMs = localMidnight - LAGOS_OFFSET_MS;
   return { startMs, endMs: startMs + 86_400_000 };
+}
+
+function lagosWeekBounds() {
+  const { startMs: todayStart } = lagosDateBounds(0);
+  const lagosDate = new Date(todayStart + LAGOS_OFFSET_MS);
+  const dow = lagosDate.getUTCDay(); // 0=Sun, 1=Mon, ...
+  const daysFromMonday = dow === 0 ? 6 : dow - 1;
+  const weekStart = todayStart - daysFromMonday * 86_400_000;
+  return { startMs: weekStart, endMs: weekStart + 7 * 86_400_000 };
+}
+
+function lagosMonthBounds() {
+  const { startMs: todayStart } = lagosDateBounds(0);
+  const lagosDate = new Date(todayStart + LAGOS_OFFSET_MS);
+  const year  = lagosDate.getUTCFullYear();
+  const month = lagosDate.getUTCMonth();
+  return {
+    startMs: Date.UTC(year, month, 1)     - LAGOS_OFFSET_MS,
+    endMs:   Date.UTC(year, month + 1, 1) - LAGOS_OFFSET_MS,
+  };
+}
+
+function isLastDayOfLagosMonth() {
+  const { startMs: todayStart }    = lagosDateBounds(0);
+  const { startMs: tomorrowStart } = lagosDateBounds(1);
+  return new Date(todayStart    + LAGOS_OFFSET_MS).getUTCMonth() !==
+         new Date(tomorrowStart + LAGOS_OFFSET_MS).getUTCMonth();
 }
 
 function hashRaw(rawMessage) {
@@ -57,10 +86,13 @@ function recordOrder(rawMessage, orderNumber, customerName) {
   ).run(hashRaw(rawMessage), orderNumber || null, customerName || null, Date.now());
 }
 
-function saveConfirmedOrder(channelId, ts, order, confirmedBy) {
+function saveConfirmedOrder(channelId, ts, order, confirmedBy, opts = {}) {
   db.prepare(
-    'INSERT OR REPLACE INTO live_orders (channel_ts, order_number, order_json, confirmed_at, confirmed_by) VALUES (?, ?, ?, ?, ?)'
-  ).run(`${channelId}:${ts}`, order.orderNumber || '', JSON.stringify(order), Date.now(), confirmedBy || null);
+    'INSERT OR REPLACE INTO live_orders (channel_ts, order_number, order_json, confirmed_at, confirmed_by, otp_override, otp_authorized_by) VALUES (?, ?, ?, ?, ?, ?, ?)'
+  ).run(
+    `${channelId}:${ts}`, order.orderNumber || '', JSON.stringify(order), Date.now(),
+    confirmedBy || null, opts.otpOverride ? 1 : 0, opts.otpAuthorizedBy || null
+  );
 }
 
 function getDailySummary(userId, offsetDays = 0) {
@@ -81,6 +113,28 @@ function getAllOrdersToday(offsetDays = 0) {
     _channelId:   r.channel_ts.split(':')[0],
     _confirmedAt: r.confirmed_at,
     _confirmedBy: r.confirmed_by,
+  }));
+}
+
+function getOrdersForPeriod(startMs, endMs) {
+  return db.prepare(
+    'SELECT channel_ts, order_json, confirmed_at, confirmed_by FROM live_orders WHERE confirmed_at >= ? AND confirmed_at < ? ORDER BY confirmed_at ASC'
+  ).all(startMs, endMs).map(r => ({
+    ...JSON.parse(r.order_json),
+    _channelId:   r.channel_ts.split(':')[0],
+    _confirmedAt: r.confirmed_at,
+    _confirmedBy: r.confirmed_by,
+  }));
+}
+
+function getOtpOverridesForPeriod(startMs, endMs) {
+  return db.prepare(
+    'SELECT order_json, confirmed_at, confirmed_by, otp_authorized_by FROM live_orders WHERE otp_override = 1 AND confirmed_at >= ? AND confirmed_at < ? ORDER BY confirmed_at ASC'
+  ).all(startMs, endMs).map(r => ({
+    ...JSON.parse(r.order_json),
+    _confirmedAt:     r.confirmed_at,
+    _confirmedBy:     r.confirmed_by,
+    _otpAuthorizedBy: r.otp_authorized_by,
   }));
 }
 
@@ -132,7 +186,8 @@ function setMetaValue(key, value) {
 module.exports = {
   findDuplicate, recordOrder,
   saveConfirmedOrder, getConfirmedOrder, updateConfirmedOrder,
-  getDailySummary, getAllOrdersToday,
+  getDailySummary, getAllOrdersToday, getOrdersForPeriod, getOtpOverridesForPeriod,
+  lagosWeekBounds, lagosMonthBounds, isLastDayOfLagosMonth,
   savePendingOrder, deletePendingOrder, getAllPendingOrders,
   getMetaValue, setMetaValue,
 };
