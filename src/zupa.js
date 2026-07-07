@@ -45,7 +45,9 @@ function buildZupaPayload(order) {
         price: item.unitPrice,
       })),
       ...(order.scheduledDate && { deliveryDate: order.scheduledDate }),
-      ...(order.paymentData?.transactionRef && { paymentReference: order.paymentData.transactionRef }),
+      ...(order.paymentData?.transactionRef && {
+        paymentReference: order.paymentData.transactionRef,
+      }),
     },
     address: {
       deliveryAddress: isPickup ? null : order.fulfillment.address || null,
@@ -144,12 +146,12 @@ async function pushModification(confirmedOrder, mod, modifiedBy) {
 // ── Payment verification & OTP ────────────────────────────────────────────────
 
 async function paymentFetch(endpoint, body) {
-  const url = `${process.env.ZUPA_PRODUCTS_API}/${endpoint}`;
+  const url = `${process.env.ZUPA_API}/${endpoint}`;
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      Authorization: `Bearer ${process.env.ZUPA_PRODUCTS_TOKEN}`,
+      Authorization: `Bearer ${process.env.ZUPA_API_TOKEN}`,
     },
     body: JSON.stringify(body),
   });

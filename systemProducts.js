@@ -1,6 +1,6 @@
 class SystemProducts {
-  static apiUrl = process.env.ZUPA_PRODUCTS_API;
-  static token = process.env.ZUPA_PRODUCTS_TOKEN;
+  static apiUrl = process.env.ZUPA_API;
+  static token = process.env.ZUPA_API_TOKEN;
 
   static async makeRequest({
     endpoint,
