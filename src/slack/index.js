@@ -64,6 +64,10 @@ function createApp() {
 
   // Payment verification / OTP flow
   app.action("request_otp", handlers.handleRequestOtp);
+  app.action("resend_otp_modal", handlers.handleResendOtpModal);
+  app.action("refetch_payment", handlers.handleRefetchPayment);
+  app.action("try_payment_name", handlers.handleTryPaymentName);
+  app.view("payment_name_submit", handlers.handlePaymentNameSubmit);
   app.action("enter_otp", handlers.handleEnterOtp);
   app.view("otp_verify_submit", handlers.handleOtpVerifySubmit);
   app.action("back_to_review", handlers.handleBackToReview);

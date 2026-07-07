@@ -45,6 +45,7 @@ const {
   buildModReviewBlocks,
   buildPaymentNotFoundBlocks,
   buildOtpPendingBlocks,
+  buildPaymentNameModal,
   buildOtpModal,
   buildMenuModal,
   buildCitiesModal,
@@ -1696,12 +1697,115 @@ async function handleRequestOtp({ ack, body, client }) {
     return;
   }
 
+  // Open OTP modal directly — no intermediate "OTP sent" screen
+  await client.views.open({
+    trigger_id: body.trigger_id,
+    view: buildOtpModal(JSON.stringify({ channelId, ts, confirmedBy: body.user.id })),
+  });
+}
+
+async function handleResendOtpModal({ ack, body, view, client }) {
+  await ack();
+
+  const meta = JSON.parse(view.private_metadata || "{}");
+  const order = getOrder(meta.channelId, meta.ts);
+
+  let notice;
+  if (!order) {
+    notice = "⚠️  Order not found — close this modal and re-parse the order.";
+  } else {
+    try {
+      await requestOverrideOtp(order.clientReference);
+      notice = "✅  *OTP resent.* Enter the new 6-digit code sent to the operator.";
+    } catch (err) {
+      notice = `⚠️  *Could not resend OTP:* ${err.message}`;
+    }
+  }
+
+  await client.views.update({
+    view_id: view.id,
+    view: buildOtpModal(view.private_metadata, { notice }),
+  }).catch(() => {});
+}
+
+async function handleRefetchPayment({ ack, body, client }) {
+  await ack();
+
+  const channelId = body.container.channel_id;
+  const ts = body.container.message_ts;
+  const order = getOrder(channelId, ts);
+  if (!order) return;
+
+  order.paymentStatus = "verifying";
+  delete order.paymentData;
+  saveOrder(channelId, ts, order);
+
   await client.chat.update({
     channel: channelId,
     ts,
-    text: "OTP sent — awaiting verification",
-    blocks: buildOtpPendingBlocks(order),
+    text: "Review Order",
+    blocks: buildReviewOrderBlocks(order),
   });
+
+  verifyPaymentBackground(client, order, channelId, ts);
+}
+
+async function handleTryPaymentName({ ack, body, client }) {
+  await ack();
+
+  const channelId = body.container.channel_id;
+  const ts        = body.container.message_ts;
+
+  await client.views.open({
+    trigger_id: body.trigger_id,
+    view: buildPaymentNameModal(JSON.stringify({ channelId, ts })),
+  });
+}
+
+async function handlePaymentNameSubmit({ ack, body, view, client }) {
+  const meta        = JSON.parse(view.private_metadata || "{}");
+  const { channelId, ts } = meta;
+  const paymentName = (view.state.values?.payment_name_block?.payment_name_input?.value || "").trim();
+
+  const order = getOrder(channelId, ts);
+  if (!order) {
+    await ack({ response_action: "errors", errors: { payment_name_block: "Order not found — please re-parse the order." } });
+    return;
+  }
+
+  await ack(); // close modal
+
+  let match;
+  try {
+    match = await verifyPayment(paymentName, paymentName, order.orderTotal);
+  } catch (err) {
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: body.user.id,
+      text: `⚠️ Payment check failed: ${err.message}`,
+    });
+    return;
+  }
+
+  if (match) {
+    order.paymentStatus = "verified";
+    order.paymentData   = match;
+  } else {
+    order.paymentStatus = "not_found";
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: body.user.id,
+      text: `⚠️ No payment found for *"${paymentName}"* either. Try another name or request an OTP.`,
+    });
+  }
+
+  saveOrder(channelId, ts, order);
+  await client.chat.update({
+    channel: channelId,
+    ts,
+    text: "Review Order",
+    blocks: buildReviewOrderBlocks(order),
+  }).catch(() => {});
 }
 
 async function handleEnterOtp({ ack, body, client }) {
@@ -1843,6 +1947,10 @@ module.exports = {
   handleRefreshProductsCommand,
   restorePendingOrders,
   handleRequestOtp,
+  handleResendOtpModal,
+  handleRefetchPayment,
+  handleTryPaymentName,
+  handlePaymentNameSubmit,
   handleEnterOtp,
   handleOtpVerifySubmit,
   handleBackToReview,

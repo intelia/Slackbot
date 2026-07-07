@@ -265,11 +265,12 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
     if (ps === 'verifying') {
       paymentText = '🔍  _Verifying payment…_';
     } else if (ps === 'verified') {
-      const p    = order.paymentData || {};
-      const paid = p.amount ? fmt(p.amount) + '  ·  ' : '';
-      paymentText = `✅  *Payment verified* — ${paid}Ref: \`${p.transactionRef || '—'}\``;
+      const p     = order.paymentData || {};
+      const paid  = p.amount ? fmt(p.amount) + '  ·  ' : '';
+      const payer = p.payerName ? `Payer: *${p.payerName}*  ·  ` : '';
+      paymentText = `✅  *Payment verified* — ${paid}${payer}Ref: \`${p.transactionRef || '—'}\``;
     } else if (ps === 'not_found') {
-      paymentText = '⚠️  *No matching payment found* — an override OTP will be required to confirm';
+      paymentText = '⚠️  *No matching payment found* — use Refetch Payment or Request OTP below';
     } else if (ps === 'error') {
       paymentText = `⚠️  *Payment check failed* — ${order.paymentError || 'unknown error'}`;
     }
@@ -282,6 +283,48 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
 
   // Action buttons
   const canConfirm = unresolvedItems.length === 0 && !zoneUnresolved;
+
+  const rejectButton = {
+    type: 'button',
+    text: { type: 'plain_text', text: 'Reject' },
+    style: 'danger',
+    action_id: 'reject_order',
+    value: 'reject',
+    confirm: {
+      title: { type: 'plain_text', text: 'Reject this order?' },
+      text: { type: 'mrkdwn', text: 'The order will be discarded and not pushed to Zupa.' },
+      confirm: { type: 'plain_text', text: 'Yes, reject' },
+      deny:    { type: 'plain_text', text: 'Cancel' },
+    },
+  };
+
+  // When payment not found and order is otherwise ready: replace Confirm with
+  // inline options to avoid an extra navigation step.
+  if (order.paymentStatus === 'not_found' && canConfirm) {
+    blocks.push({
+      type: 'actions',
+      elements: [
+        rejectButton,
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: '🔄  Refetch Payment' },
+          action_id: 'refetch_payment',
+        },
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: '👤  Try Different Name' },
+          action_id: 'try_payment_name',
+        },
+        {
+          type: 'button',
+          text: { type: 'plain_text', text: '📲  Request OTP' },
+          action_id: 'request_otp',
+          style: 'primary',
+        },
+      ],
+    });
+    return blocks;
+  }
 
   const confirmButton = {
     type: 'button',
@@ -306,22 +349,7 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
 
   blocks.push({
     type: 'actions',
-    elements: [
-      {
-        type: 'button',
-        text: { type: 'plain_text', text: 'Reject' },
-        style: 'danger',
-        action_id: 'reject_order',
-        value: 'reject',
-        confirm: {
-          title: { type: 'plain_text', text: 'Reject this order?' },
-          text: { type: 'mrkdwn', text: 'The order will be discarded and not pushed to Zupa.' },
-          confirm: { type: 'plain_text', text: 'Yes, reject' },
-          deny: { type: 'plain_text', text: 'Cancel' },
-        },
-      },
-      confirmButton,
-    ],
+    elements: [ rejectButton, confirmButton ],
   });
 
   return blocks;
@@ -1248,20 +1276,55 @@ function buildOtpPendingBlocks(order) {
   ];
 }
 
-function buildOtpModal(privateMetadata) {
+function buildPaymentNameModal(privateMetadata) {
+  return {
+    type: 'modal',
+    callback_id: 'payment_name_submit',
+    private_metadata: privateMetadata,
+    title: { type: 'plain_text', text: 'Payment Name' },
+    submit: { type: 'plain_text', text: 'Search Payment' },
+    close:  { type: 'plain_text', text: 'Cancel' },
+    blocks: [
+      {
+        type: 'context',
+        elements: [{ type: 'mrkdwn', text: 'Enter the name exactly as it appears on the payment transfer.' }],
+      },
+      {
+        type: 'input',
+        block_id: 'payment_name_block',
+        label: { type: 'plain_text', text: 'Name on payment' },
+        element: {
+          type: 'plain_text_input',
+          action_id: 'payment_name_input',
+          placeholder: { type: 'plain_text', text: 'e.g. Chukwuemeka Okafor' },
+        },
+      },
+    ],
+  };
+}
+
+// notice: optional string shown at the top (e.g. "OTP resent." confirmation)
+function buildOtpModal(privateMetadata, opts = {}) {
+  const noticeText = opts.notice
+    || '📲  OTP sent to operator via WhatsApp. Collect the 6-digit code and enter it below.';
+
   return {
     type: 'modal',
     callback_id: 'otp_verify_submit',
     private_metadata: privateMetadata,
     title: { type: 'plain_text', text: 'Override OTP' },
-    submit: { type: 'plain_text', text: 'Verify' },
+    submit: { type: 'plain_text', text: 'Verify OTP' },
     close:  { type: 'plain_text', text: 'Cancel' },
     blocks: [
+      {
+        type: 'context',
+        elements: [{ type: 'mrkdwn', text: noticeText }],
+      },
       {
         type: 'input',
         block_id: 'otp_block',
         label: { type: 'plain_text', text: 'OTP Code' },
-        hint: { type: 'plain_text', text: 'Enter the 6-digit code sent to the operator via WhatsApp.' },
+        hint: { type: 'plain_text', text: 'Enter the 6-digit code sent to the operator.' },
         element: {
           type: 'plain_text_input',
           action_id: 'otp_input',
@@ -1269,6 +1332,16 @@ function buildOtpModal(privateMetadata) {
           max_length: 6,
           min_length: 6,
         },
+      },
+      {
+        type: 'actions',
+        elements: [
+          {
+            type: 'button',
+            text: { type: 'plain_text', text: '🔄  Resend OTP' },
+            action_id: 'resend_otp_modal',
+          },
+        ],
       },
     ],
   };
@@ -1292,5 +1365,6 @@ module.exports = {
   buildEodSummaryBlocks,
   buildPaymentNotFoundBlocks,
   buildOtpPendingBlocks,
+  buildPaymentNameModal,
   buildOtpModal,
 };

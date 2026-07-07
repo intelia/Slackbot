@@ -45,6 +45,7 @@ function buildZupaPayload(order) {
         price: item.unitPrice,
       })),
       ...(order.scheduledDate && { deliveryDate: order.scheduledDate }),
+      ...(order.paymentData?.transactionRef && { paymentReference: order.paymentData.transactionRef }),
     },
     address: {
       deliveryAddress: isPickup ? null : order.fulfillment.address || null,
