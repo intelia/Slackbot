@@ -198,15 +198,6 @@ async function verifyOverrideOtp(clientReference, otp) {
   throw new Error(data.message || `OTP verification failed (HTTP ${status})`);
 }
 
-module.exports = {
-  pushToZupa,
-  buildZupaPayload,
-  pushModification,
-  buildModPayload,
-  verifyPayment,
-  requestOverrideOtp,
-  verifyOverrideOtp,
-};
 // Returns kitchen summary for a date range (YYYY-MM-DD strings).
 // For a single day, pass the same date for both startDate and endDate.
 // Throws on non-2xx; callers should .catch(() => null) for optional periods.
@@ -225,7 +216,9 @@ async function fetchKitchenSummary(startDate, endDate) {
       err.message || `Kitchen summary API failed (HTTP ${res.status})`,
     );
   }
-  return res.json();
+  const result = await res.json();
+  console.log("[Zupa] Kitchen summary data:", result);
+  return result;
 }
 
 module.exports = {
@@ -233,5 +226,8 @@ module.exports = {
   buildZupaPayload,
   pushModification,
   buildModPayload,
+  verifyPayment,
+  requestOverrideOtp,
+  verifyOverrideOtp,
   fetchKitchenSummary,
 };

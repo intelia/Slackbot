@@ -5,3 +5,4 @@ node_modules
 *.db
 dump-*.json
 dump-*.txt
+src/data/*.clean.json
