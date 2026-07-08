@@ -14,6 +14,7 @@ const { reconcile } = require("../parser/reconciler");
 const {
   pushToZupa,
   pushModification,
+  fetchKitchenSummary,
   verifyPayment,
   requestOverrideOtp,
   verifyOverrideOtp,
@@ -26,6 +27,11 @@ const {
   updateConfirmedOrder,
   getDailySummary,
   getAllOrdersToday,
+  getOrdersForPeriod,
+  getOtpOverridesForPeriod,
+  lagosWeekBounds,
+  lagosMonthBounds,
+  isLastDayOfLagosMonth,
   savePendingOrder,
   deletePendingOrder,
   getAllPendingOrders,
@@ -51,7 +57,9 @@ const {
   buildCitiesModal,
   buildSummaryModal,
   buildSummaryChannelBlocks,
-  buildEodSummaryBlocks,
+  buildDailyReportBlocks,
+  buildWeeklyReportBlocks,
+  buildMonthlyReportBlocks,
 } = require("./blocks");
 
 // ── In-memory order state (backed by SQLite for restart recovery) ─────────────
@@ -1600,8 +1608,10 @@ async function handleDailySummaryCommand({ command, ack, client }) {
     const arg = (command.text || "").trim();
     const offsetDays = /^-?\d+$/.test(arg) ? parseInt(arg, 10) : 0;
 
-    const allOrders = getAllOrdersToday(offsetDays);
-    const channelOrders = allOrders.filter((o) => o._channelId === channelId);
+    const lagosDate = (off) =>
+      new Date(Date.now() + off * 86_400_000).toLocaleDateString("en-CA", {
+        timeZone: "Africa/Lagos",
+      });
 
     const dateLabel = new Date(
       Date.now() + offsetDays * 86_400_000,
@@ -1613,19 +1623,41 @@ async function handleDailySummaryCommand({ command, ack, client }) {
       year: "numeric",
     });
 
-    if (channelOrders.length === 0) {
+    // Fetch kitchen data and CSR orders in parallel
+    const [kitchenData, yesterdayData, allOrders] = await Promise.all([
+      fetchKitchenSummary(lagosDate(offsetDays), lagosDate(offsetDays)).catch(
+        (err) => {
+          console.error("[daily-summary] Kitchen API:", err.message);
+          return null;
+        },
+      ),
+      fetchKitchenSummary(
+        lagosDate(offsetDays - 1),
+        lagosDate(offsetDays - 1),
+      ).catch(() => null),
+      Promise.resolve(getAllOrdersToday(offsetDays)),
+    ]);
+
+    const channelOrders = allOrders.filter((o) => o._channelId === channelId);
+
+    if (!kitchenData && channelOrders.length === 0) {
       await client.chat.postEphemeral({
         channel: channelId,
         user: userId,
-        text: `📊 No orders confirmed in this channel on ${dateLabel}.`,
+        text: `📊 No data available for ${dateLabel}.`,
       });
       return;
     }
 
     await client.chat.postMessage({
       channel: channelId,
-      text: `📊 Channel summary — ${dateLabel}  ·  ${channelOrders.length} order${channelOrders.length !== 1 ? "s" : ""}`,
-      blocks: buildEodSummaryBlocks(channelOrders, allOrders, dateLabel),
+      text: `📊 Daily Operations Report — ${dateLabel}`,
+      blocks: buildDailyReportBlocks(
+        kitchenData,
+        yesterdayData,
+        channelOrders,
+        dateLabel,
+      ),
     });
   } catch (err) {
     console.error("[handleDailySummaryCommand]", err);
@@ -1634,6 +1666,160 @@ async function handleDailySummaryCommand({ command, ack, client }) {
         channel: channelId,
         user: userId,
         text: `❌ Could not generate summary: ${err.message}`,
+      })
+      .catch(() => {});
+  }
+}
+
+// ── /weekly-summary ───────────────────────────────────────────────────────────
+
+async function handleWeeklySummaryCommand({ command, ack, client }) {
+  await ack();
+  const channelId = command.channel_id;
+  const userId = command.user_id;
+  try {
+    const lagosDate = (off) =>
+      new Date(Date.now() + off * 86_400_000).toLocaleDateString("en-CA", {
+        timeZone: "Africa/Lagos",
+      });
+
+    const [y, m, d] = lagosDate(0).split("-").map(Number);
+    const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+    const daysFromMonday = dow === 0 ? 6 : dow - 1;
+
+    const thisStart = lagosDate(-daysFromMonday);
+    const thisEnd = lagosDate(0);
+    const prevStart = lagosDate(-daysFromMonday - 7);
+    const prevEnd = lagosDate(-7);
+
+    const { startMs, endMs } = lagosWeekBounds();
+    const allOrders = getOrdersForPeriod(startMs, endMs);
+    const otpOrders = getOtpOverridesForPeriod(startMs, endMs);
+    const channelOrders = allOrders.filter((o) => o._channelId === channelId);
+
+    const mondayUtc = new Date(Date.UTC(y, m - 1, d - daysFromMonday));
+    const thursday = new Date(mondayUtc.getTime() + 3 * 86_400_000);
+    const yearStart = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1));
+    const weekNum = Math.ceil(((thursday - yearStart) / 86_400_000 + 1) / 7);
+    const endStr = new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-NG", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+    const periodLabel = `Week ${weekNum}  ·  Ending ${endStr}`;
+
+    const [kitchenData, prevData] = await Promise.all([
+      fetchKitchenSummary(thisStart, thisEnd).catch((err) => {
+        console.error("[weekly-summary] Kitchen API:", err.message);
+        return null;
+      }),
+      fetchKitchenSummary(prevStart, prevEnd).catch(() => null),
+    ]);
+
+    if (!kitchenData && channelOrders.length === 0) {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: `📊 No data available for ${periodLabel}.`,
+      });
+      return;
+    }
+
+    await client.chat.postMessage({
+      channel: channelId,
+      text: `📊 Weekly Operations Report — ${periodLabel}`,
+      blocks: buildWeeklyReportBlocks(
+        kitchenData,
+        prevData,
+        channelOrders,
+        otpOrders,
+        periodLabel,
+      ),
+    });
+  } catch (err) {
+    console.error("[handleWeeklySummaryCommand]", err);
+    await client.chat
+      .postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: `❌ Could not generate report: ${err.message}`,
+      })
+      .catch(() => {});
+  }
+}
+
+// ── /monthly-summary ──────────────────────────────────────────────────────────
+
+async function handleMonthlySummaryCommand({ command, ack, client }) {
+  await ack();
+  const channelId = command.channel_id;
+  const userId = command.user_id;
+  try {
+    const lagosDate = (off) =>
+      new Date(Date.now() + off * 86_400_000).toLocaleDateString("en-CA", {
+        timeZone: "Africa/Lagos",
+      });
+
+    const [year, month] = lagosDate(0).split("-").map(Number);
+    const thisStart = `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-01`;
+    const thisEnd = lagosDate(0);
+
+    const lastMonthDate = new Date(Date.UTC(year, month - 2, 1));
+    const lmy = lastMonthDate.getUTCFullYear();
+    const lmm = lastMonthDate.getUTCMonth() + 1;
+    const prevStart = `${String(lmy).padStart(4, "0")}-${String(lmm).padStart(2, "0")}-01`;
+    const lastDay = new Date(Date.UTC(year, month - 1, 0));
+    const prevEnd = lastDay.toLocaleDateString("en-CA", { timeZone: "UTC" });
+
+    const { startMs, endMs } = lagosMonthBounds();
+    const allOrders = getOrdersForPeriod(startMs, endMs);
+    const channelOrders = allOrders.filter((o) => o._channelId === channelId);
+
+    const monthLabel = new Date(
+      Date.UTC(year, month - 1, 1),
+    ).toLocaleDateString("en-NG", { month: "long", year: "numeric" });
+    const dateLabel = new Date().toLocaleDateString("en-NG", {
+      timeZone: "Africa/Lagos",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+    const periodLabel = `${monthLabel}  ·  ${dateLabel}`;
+
+    const [kitchenData, prevData] = await Promise.all([
+      fetchKitchenSummary(thisStart, thisEnd).catch((err) => {
+        console.error("[monthly-summary] Kitchen API:", err.message);
+        return null;
+      }),
+      fetchKitchenSummary(prevStart, prevEnd).catch(() => null),
+    ]);
+
+    if (!kitchenData && channelOrders.length === 0) {
+      await client.chat.postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: `📊 No data available for ${periodLabel}.`,
+      });
+      return;
+    }
+
+    await client.chat.postMessage({
+      channel: channelId,
+      text: `📊 Monthly Operations Report — ${monthLabel}`,
+      blocks: buildMonthlyReportBlocks(
+        kitchenData,
+        prevData,
+        channelOrders,
+        periodLabel,
+      ),
+    });
+  } catch (err) {
+    console.error("[handleMonthlySummaryCommand]", err);
+    await client.chat
+      .postEphemeral({
+        channel: channelId,
+        user: userId,
+        text: `❌ Could not generate report: ${err.message}`,
       })
       .catch(() => {});
   }
@@ -1700,7 +1886,9 @@ async function handleRequestOtp({ ack, body, client }) {
   // Open OTP modal directly — no intermediate "OTP sent" screen
   await client.views.open({
     trigger_id: body.trigger_id,
-    view: buildOtpModal(JSON.stringify({ channelId, ts, confirmedBy: body.user.id })),
+    view: buildOtpModal(
+      JSON.stringify({ channelId, ts, confirmedBy: body.user.id }),
+    ),
   });
 }
 
@@ -1716,16 +1904,19 @@ async function handleResendOtpModal({ ack, body, view, client }) {
   } else {
     try {
       await requestOverrideOtp(order.clientReference);
-      notice = "✅  *OTP resent.* Enter the new 6-digit code sent to the operator.";
+      notice =
+        "✅  *OTP resent.* Enter the new 6-digit code sent to the operator.";
     } catch (err) {
       notice = `⚠️  *Could not resend OTP:* ${err.message}`;
     }
   }
 
-  await client.views.update({
-    view_id: view.id,
-    view: buildOtpModal(view.private_metadata, { notice }),
-  }).catch(() => {});
+  await client.views
+    .update({
+      view_id: view.id,
+      view: buildOtpModal(view.private_metadata, { notice }),
+    })
+    .catch(() => {});
 }
 
 async function handleRefetchPayment({ ack, body, client }) {
@@ -1754,7 +1945,7 @@ async function handleTryPaymentName({ ack, body, client }) {
   await ack();
 
   const channelId = body.container.channel_id;
-  const ts        = body.container.message_ts;
+  const ts = body.container.message_ts;
 
   await client.views.open({
     trigger_id: body.trigger_id,
@@ -1763,13 +1954,20 @@ async function handleTryPaymentName({ ack, body, client }) {
 }
 
 async function handlePaymentNameSubmit({ ack, body, view, client }) {
-  const meta        = JSON.parse(view.private_metadata || "{}");
+  const meta = JSON.parse(view.private_metadata || "{}");
   const { channelId, ts } = meta;
-  const paymentName = (view.state.values?.payment_name_block?.payment_name_input?.value || "").trim();
+  const paymentName = (
+    view.state.values?.payment_name_block?.payment_name_input?.value || ""
+  ).trim();
 
   const order = getOrder(channelId, ts);
   if (!order) {
-    await ack({ response_action: "errors", errors: { payment_name_block: "Order not found — please re-parse the order." } });
+    await ack({
+      response_action: "errors",
+      errors: {
+        payment_name_block: "Order not found — please re-parse the order.",
+      },
+    });
     return;
   }
 
@@ -1789,7 +1987,7 @@ async function handlePaymentNameSubmit({ ack, body, view, client }) {
 
   if (match) {
     order.paymentStatus = "verified";
-    order.paymentData   = match;
+    order.paymentData = match;
   } else {
     order.paymentStatus = "not_found";
     await client.chat.postEphemeral({
@@ -1800,12 +1998,14 @@ async function handlePaymentNameSubmit({ ack, body, view, client }) {
   }
 
   saveOrder(channelId, ts, order);
-  await client.chat.update({
-    channel: channelId,
-    ts,
-    text: "Review Order",
-    blocks: buildReviewOrderBlocks(order),
-  }).catch(() => {});
+  await client.chat
+    .update({
+      channel: channelId,
+      ts,
+      text: "Review Order",
+      blocks: buildReviewOrderBlocks(order),
+    })
+    .catch(() => {});
 }
 
 async function handleEnterOtp({ ack, body, client }) {
@@ -1944,6 +2144,8 @@ module.exports = {
   handleSummaryCommand,
   handleSummarySubmit,
   handleDailySummaryCommand,
+  handleWeeklySummaryCommand,
+  handleMonthlySummaryCommand,
   handleRefreshProductsCommand,
   restorePendingOrders,
   handleRequestOtp,

@@ -1,20 +1,26 @@
-'use strict';
+"use strict";
 
-require('dotenv').config();
-const { createApp } = require('./src/slack/index');
-const loader = require('./src/data/loader');
-const { scheduleEodSummary, postRestartNotification } = require('./src/slack/eod');
-const { restorePendingOrders } = require('./src/slack/handlers');
+require("dotenv").config();
+const { createApp } = require("./src/slack/index");
+const loader = require("./src/data/loader");
+const {
+  scheduleEodSummary,
+  postRestartNotification,
+} = require("./src/slack/eod");
+const { restorePendingOrders } = require("./src/slack/handlers");
 
 // @slack/socket-mode's finity state machine throws synchronously when Slack
 // sends 'server explicit disconnect' in the 'connecting' state — a known SDK
 // bug. This prevents that from crashing the process; Bolt's own reconnect
 // logic handles the retry. All other uncaught exceptions still exit normally.
-process.on('uncaughtException', (err) => {
+process.on("uncaughtException", (err) => {
   if (err.message && err.message.startsWith("Unhandled event '")) {
-    console.error('[socket-mode] State machine error (Slack disconnected — will retry):', err.message);
+    console.error(
+      "[socket-mode] State machine error (Slack disconnected — will retry):",
+      err.message,
+    );
   } else {
-    console.error('[fatal] Uncaught exception:', err);
+    console.error("[fatal] Uncaught exception:", err);
     process.exit(1);
   }
 });
@@ -28,14 +34,18 @@ process.on('uncaughtException', (err) => {
   setInterval(() => loader.refreshIfStale(), 24 * 60 * 60 * 1000); // check every 24 hours
 
   const app = createApp();
-  const port = parseInt(process.env.PORT || '3000', 10);
+  const port = parseInt(process.env.PORT || "3000", 10);
   await app.start(port);
-  console.log(`⚡ Zupa Order Bot running on port ${port} (Socket Mode)`);
+  console.log(
+    `⚡ Zupa Order Bot running on port ${port} (Socket Mode); connected to ${process.env.ZUPA_API} (API URL)`,
+  );
 
   scheduleEodSummary(app.client);
 
   // Restore pending orders first, then announce (notification includes restore status + changelog if version changed)
   restorePendingOrders(app.client)
-    .then(restoreResult => postRestartNotification(app.client, restoreResult))
-    .catch(err => console.error('[startup] Startup sequence failed:', err.message));
+    .then((restoreResult) => postRestartNotification(app.client, restoreResult))
+    .catch((err) =>
+      console.error("[startup] Startup sequence failed:", err.message),
+    );
 })();

@@ -1,8 +1,18 @@
 'use strict';
 
 const cron = require('node-cron');
-const { getAllOrdersToday, getMetaValue, setMetaValue } = require('../data/db');
-const { buildEodSummaryBlocks } = require('./blocks');
+const {
+  getAllOrdersToday,
+  getOrdersForPeriod,
+  getOtpOverridesForPeriod,
+  lagosWeekBounds,
+  lagosMonthBounds,
+  isLastDayOfLagosMonth,
+  getMetaValue,
+  setMetaValue,
+} = require('../data/db');
+const { buildDailyReportBlocks, buildWeeklyReportBlocks, buildMonthlyReportBlocks } = require('./blocks');
+const { fetchKitchenSummary } = require('../zupa');
 const { CURRENT_VERSION, getChangesSince } = require('../changelog');
 
 // ── Restart / update notification ─────────────────────────────────────────────
@@ -101,21 +111,40 @@ async function postRestartNotification(client, restoreResult = { restored: 0, fa
   }
 }
 
-// ── End-of-day summary ────────────────────────────────────────────────────────
+// ── Date helpers ──────────────────────────────────────────────────────────────
 
-async function postEodSummaries(client) {
-  const allOrders = getAllOrdersToday();
+function lagosDateString(offsetDays = 0) {
+  return new Date(Date.now() + offsetDays * 86_400_000)
+    .toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }); // YYYY-MM-DD
+}
 
-  if (allOrders.length === 0) {
-    console.log('[eod] No orders confirmed today — skipping summary posts.');
-    return;
-  }
+// Returns the day-of-week (0=Sun…6=Sat) for the current Lagos date.
+function lagosDow() {
+  const [y, m, d] = lagosDateString(0).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+}
 
-  const dateLabel = new Date().toLocaleDateString('en-NG', {
-    timeZone: 'Africa/Lagos',
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  });
+function lagosWeekLabel() {
+  const [y, m, d] = lagosDateString(0).split('-').map(Number);
+  const todayUtc  = new Date(Date.UTC(y, m - 1, d));
+  const dow       = todayUtc.getUTCDay();
+  const daysFromMonday = dow === 0 ? 6 : dow - 1;
+  const mondayUtc      = new Date(Date.UTC(y, m - 1, d - daysFromMonday));
+  const thursday       = new Date(mondayUtc.getTime() + 3 * 86_400_000);
+  const yearStart      = new Date(Date.UTC(thursday.getUTCFullYear(), 0, 1));
+  const weekNum        = Math.ceil((((thursday - yearStart) / 86_400_000) + 1) / 7);
+  const endStr         = todayUtc.toLocaleDateString('en-NG', { day: 'numeric', month: 'short', year: 'numeric' });
+  return `Week ${weekNum}  ·  Ending ${endStr}`;
+}
 
+function lagosMonthLabel() {
+  const [y, m] = lagosDateString(0).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-NG', { month: 'long', year: 'numeric' });
+}
+
+// ── Shared channel-targeting helper ──────────────────────────────────────────
+
+function _resolveTargets(allOrders) {
   const byChannel = new Map();
   for (const order of allOrders) {
     const ch = order._channelId;
@@ -123,40 +152,186 @@ async function postEodSummaries(client) {
     if (!byChannel.has(ch)) byChannel.set(ch, []);
     byChannel.get(ch).push(order);
   }
-
-  console.log(`[eod] Posting summaries to ${byChannel.size} channel(s) — ${allOrders.length} total orders.`);
-
-  const results = await Promise.allSettled(
-    Array.from(byChannel.entries()).map(async ([channelId, channelOrders]) => {
-      const blocks = buildEodSummaryBlocks(channelOrders, allOrders, dateLabel);
-      await client.chat.postMessage({
-        channel: channelId,
-        text: `📊 End-of-day summary — ${dateLabel}  ·  ${channelOrders.length} order${channelOrders.length !== 1 ? 's' : ''}`,
-        blocks,
-      });
-      console.log(`[eod] ✓ Posted to ${channelId} (${channelOrders.length} orders)`);
-    })
-  );
-
-  for (const [i, result] of results.entries()) {
-    if (result.status === 'rejected') {
-      const channelId = Array.from(byChannel.keys())[i];
-      console.error(`[eod] ✗ Failed to post to ${channelId}:`, result.reason?.message || result.reason);
-    }
-  }
+  const targets = byChannel.size > 0
+    ? Array.from(byChannel.keys())
+    : (process.env.NOTIFY_CHANNELS || '').split(',').map(s => s.trim()).filter(Boolean);
+  return { byChannel, targets };
 }
+
+// ── Daily Operations Report ───────────────────────────────────────────────────
+
+async function postEodSummaries(client) {
+  const allOrders = getAllOrdersToday();
+  const dateLabel = new Date().toLocaleDateString('en-NG', {
+    timeZone: 'Africa/Lagos', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
+  const today     = lagosDateString(0);
+  const yesterday = lagosDateString(-1);
+
+  let kitchenData   = null;
+  let yesterdayData = null;
+  try {
+    [kitchenData, yesterdayData] = await Promise.all([
+      fetchKitchenSummary(today, today),
+      fetchKitchenSummary(yesterday, yesterday).catch(() => null),
+    ]);
+  } catch (err) {
+    console.error('[eod] Daily kitchen API failed:', err.message);
+  }
+
+  if (!kitchenData && allOrders.length === 0) {
+    console.log('[eod] No data today — skipping daily report.');
+    return;
+  }
+
+  const { byChannel, targets } = _resolveTargets(allOrders);
+  if (targets.length === 0) { console.log('[eod] No channels for daily report.'); return; }
+
+  console.log(`[eod] Posting daily report to ${targets.length} channel(s).`);
+  await Promise.allSettled(targets.map(async channelId => {
+    const channelOrders = byChannel.get(channelId) || [];
+    await client.chat.postMessage({
+      channel: channelId,
+      text: `📊 Daily Operations Report — ${dateLabel}`,
+      blocks: buildDailyReportBlocks(kitchenData, yesterdayData, channelOrders, dateLabel),
+    });
+    console.log(`[eod] ✓ Daily posted to ${channelId}`);
+  }));
+}
+
+// ── Weekly Operations Report ──────────────────────────────────────────────────
+
+async function postWeeklySummary(client) {
+  const dow = lagosDow(); // should be 0 (Sunday) when cron fires
+  const daysFromMonday = dow === 0 ? 6 : dow - 1;
+
+  // This week: Monday → today (Sunday)
+  const thisStart = lagosDateString(-daysFromMonday);
+  const thisEnd   = lagosDateString(0);
+  // Last week: previous Monday → previous Sunday
+  const prevStart = lagosDateString(-daysFromMonday - 7);
+  const prevEnd   = lagosDateString(-7);
+
+  const { startMs, endMs } = lagosWeekBounds();
+  const allOrders  = getOrdersForPeriod(startMs, endMs);
+  const otpOrders  = getOtpOverridesForPeriod(startMs, endMs);
+  const periodLabel = lagosWeekLabel();
+
+  let kitchenData = null;
+  let prevData    = null;
+  try {
+    [kitchenData, prevData] = await Promise.all([
+      fetchKitchenSummary(thisStart, thisEnd),
+      fetchKitchenSummary(prevStart, prevEnd).catch(() => null),
+    ]);
+  } catch (err) {
+    console.error('[eod] Weekly kitchen API failed:', err.message);
+  }
+
+  if (!kitchenData && allOrders.length === 0) {
+    console.log('[eod] No data for weekly report — skipping.');
+    return;
+  }
+
+  const { byChannel, targets } = _resolveTargets(allOrders);
+  if (targets.length === 0) { console.log('[eod] No channels for weekly report.'); return; }
+
+  console.log(`[eod] Posting weekly report to ${targets.length} channel(s).`);
+  await Promise.allSettled(targets.map(async channelId => {
+    const channelOrders = byChannel.get(channelId) || [];
+    await client.chat.postMessage({
+      channel: channelId,
+      text: `📊 Weekly Operations Report — ${periodLabel}`,
+      blocks: buildWeeklyReportBlocks(kitchenData, prevData, channelOrders, otpOrders, periodLabel),
+    });
+    console.log(`[eod] ✓ Weekly posted to ${channelId}`);
+  }));
+}
+
+// ── Monthly Operations Report ─────────────────────────────────────────────────
+
+async function postMonthlySummary(client) {
+  if (!isLastDayOfLagosMonth()) return; // guard: only runs on the last day
+
+  const [year, month] = lagosDateString(0).split('-').map(Number);
+  const thisStart = `${String(year).padStart(4,'0')}-${String(month).padStart(2,'0')}-01`;
+  const thisEnd   = lagosDateString(0);
+
+  // Last month date range
+  const lastMonthDate  = new Date(Date.UTC(year, month - 2, 1));
+  const lmy = lastMonthDate.getUTCFullYear();
+  const lmm = lastMonthDate.getUTCMonth() + 1;
+  const prevStart = `${String(lmy).padStart(4,'0')}-${String(lmm).padStart(2,'0')}-01`;
+  const lastDay   = new Date(Date.UTC(year, month - 1, 0)); // day 0 = last day of prev month
+  const prevEnd   = lastDay.toLocaleDateString('en-CA', { timeZone: 'UTC' });
+
+  const { startMs, endMs } = lagosMonthBounds();
+  const allOrders   = getOrdersForPeriod(startMs, endMs);
+  const monthLabel  = lagosMonthLabel();
+  const dateLabel   = new Date().toLocaleDateString('en-NG', {
+    timeZone: 'Africa/Lagos', day: 'numeric', month: 'long', year: 'numeric',
+  });
+  const periodLabel = `${monthLabel}  ·  ${dateLabel}`;
+
+  let kitchenData = null;
+  let prevData    = null;
+  try {
+    [kitchenData, prevData] = await Promise.all([
+      fetchKitchenSummary(thisStart, thisEnd),
+      fetchKitchenSummary(prevStart, prevEnd).catch(() => null),
+    ]);
+  } catch (err) {
+    console.error('[eod] Monthly kitchen API failed:', err.message);
+  }
+
+  if (!kitchenData && allOrders.length === 0) {
+    console.log('[eod] No data for monthly report — skipping.');
+    return;
+  }
+
+  const { byChannel, targets } = _resolveTargets(allOrders);
+  if (targets.length === 0) { console.log('[eod] No channels for monthly report.'); return; }
+
+  console.log(`[eod] Posting monthly report to ${targets.length} channel(s).`);
+  await Promise.allSettled(targets.map(async channelId => {
+    const channelOrders = byChannel.get(channelId) || [];
+    await client.chat.postMessage({
+      channel: channelId,
+      text: `📊 Monthly Operations Report — ${monthLabel}`,
+      blocks: buildMonthlyReportBlocks(kitchenData, prevData, channelOrders, periodLabel),
+    });
+    console.log(`[eod] ✓ Monthly posted to ${channelId}`);
+  }));
+}
+
+// ── Scheduler ─────────────────────────────────────────────────────────────────
 
 function scheduleEodSummary(client) {
+  // Daily report at 9:00pm
   cron.schedule('0 21 * * *', async () => {
-    console.log('[eod] 9pm Lagos — running end-of-day summary job…');
-    try {
-      await postEodSummaries(client);
-    } catch (err) {
-      console.error('[eod] Summary job failed unexpectedly:', err);
-    }
+    console.log('[eod] 9:00pm Lagos — running daily report…');
+    try { await postEodSummaries(client); } catch (err) { console.error('[eod] Daily report failed:', err); }
   }, { timezone: 'Africa/Lagos' });
 
-  console.log('[eod] End-of-day summary scheduled for 9:00pm Lagos time (Africa/Lagos).');
+  // Weekly report at 9:05pm every Sunday
+  cron.schedule('5 21 * * 0', async () => {
+    console.log('[eod] 9:05pm Sunday Lagos — running weekly report…');
+    try { await postWeeklySummary(client); } catch (err) { console.error('[eod] Weekly report failed:', err); }
+  }, { timezone: 'Africa/Lagos' });
+
+  // Monthly report at 9:10pm — fires daily but postMonthlySummary guards on last-day-of-month
+  cron.schedule('10 21 * * *', async () => {
+    console.log('[eod] 9:10pm Lagos — checking monthly report…');
+    try { await postMonthlySummary(client); } catch (err) { console.error('[eod] Monthly report failed:', err); }
+  }, { timezone: 'Africa/Lagos' });
+
+  console.log('[eod] Scheduled: daily 9:00pm, weekly (Sun) 9:05pm, monthly (last-day) 9:10pm — all Africa/Lagos.');
 }
 
-module.exports = { scheduleEodSummary, postEodSummaries, postRestartNotification };
+module.exports = {
+  scheduleEodSummary,
+  postEodSummaries,
+  postWeeklySummary,
+  postMonthlySummary,
+  postRestartNotification,
+};

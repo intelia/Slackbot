@@ -1,16 +1,16 @@
-'use strict';
+"use strict";
 
-const { rideHailTiers, namedZones, pickupRows } = require('../parser/matcher');
-const store = require('../data/store');
+const { rideHailTiers, namedZones, pickupRows } = require("../parser/matcher");
+const store = require("../data/store");
 
 function fmt(n) {
-  if (n == null) return '—';
-  return '₦' + Number(n).toLocaleString('en-NG');
+  if (n == null) return "—";
+  return "₦" + Number(n).toLocaleString("en-NG");
 }
 
 function trunc(s, max) {
-  if (!s) return '';
-  return s.length > max ? s.slice(0, max - 1) + '…' : s;
+  if (!s) return "";
+  return s.length > max ? s.slice(0, max - 1) + "…" : s;
 }
 
 // ── Line item blocks ──────────────────────────────────────────────────────────
@@ -18,11 +18,11 @@ function trunc(s, max) {
 function matchedItemBlock(item) {
   const label = `✅  *${item.productName} · ${item.sizeName}*  ×${item.qty}  —  ${fmt(item.lineTotal)}`;
   return {
-    type: 'section',
-    text: { type: 'mrkdwn', text: label },
+    type: "section",
+    text: { type: "mrkdwn", text: label },
     accessory: {
-      type: 'button',
-      text: { type: 'plain_text', text: 'Edit' },
+      type: "button",
+      text: { type: "plain_text", text: "Edit" },
       action_id: `edit_item_${item.index}`,
       value: String(item.index),
     },
@@ -32,34 +32,41 @@ function matchedItemBlock(item) {
 function ambiguousItemBlock(item) {
   const blocks = [];
 
-  const headerText = item.issue === 'unmatched'
-    ? `❌  *"${trunc(item.raw, 60)}"* — no match found`
-    : item.issue === 'price_mismatch'
-    ? `⚠️  *"${trunc(item.raw, 60)}"* — price mismatch (stated ${fmt(item.statedPrice)}, catalogue ${fmt(item.candidates[0]?.price)})`
-    : `⚠️  *"${trunc(item.raw, 60)}"* — select the correct product:`;
+  const headerText =
+    item.issue === "unmatched"
+      ? `❌  *"${trunc(item.raw, 60)}"* — no match found`
+      : item.issue === "price_mismatch"
+        ? `⚠️  *"${trunc(item.raw, 60)}"* — price mismatch (stated ${fmt(item.statedPrice)}, catalogue ${fmt(item.candidates[0]?.price)})`
+        : `⚠️  *"${trunc(item.raw, 60)}"* — select the correct product:`;
 
-  blocks.push({ type: 'section', text: { type: 'mrkdwn', text: headerText } });
+  blocks.push({ type: "section", text: { type: "mrkdwn", text: headerText } });
 
   // Candidate picker (up to 5, plus a placeholder "none of these")
-  const candidateOptions = item.candidates.slice(0, 5).map(c => ({
-    text: { type: 'plain_text', text: trunc(`${c.productName} · ${c.sizeName} — ${fmt(c.price)}${c.priceMatch ? ' ✓' : ''}`, 75) },
+  const candidateOptions = item.candidates.slice(0, 5).map((c) => ({
+    text: {
+      type: "plain_text",
+      text: trunc(
+        `${c.productName} · ${c.sizeName} — ${fmt(c.price)}${c.priceMatch ? " ✓" : ""}`,
+        75,
+      ),
+    },
     value: c.sizeId,
   }));
 
   if (candidateOptions.length > 0) {
     blocks.push({
-      type: 'actions',
+      type: "actions",
       block_id: `item_actions_${item.index}`,
       elements: [
         {
-          type: 'static_select',
+          type: "static_select",
           action_id: `product_pick_${item.index}`,
-          placeholder: { type: 'plain_text', text: 'Pick product…' },
+          placeholder: { type: "plain_text", text: "Pick product…" },
           options: candidateOptions,
         },
         {
-          type: 'button',
-          text: { type: 'plain_text', text: 'Search all' },
+          type: "button",
+          text: { type: "plain_text", text: "Search all" },
           action_id: `search_product_${item.index}`,
           value: String(item.index),
         },
@@ -67,12 +74,12 @@ function ambiguousItemBlock(item) {
     });
   } else {
     blocks.push({
-      type: 'actions',
+      type: "actions",
       block_id: `item_actions_${item.index}`,
       elements: [
         {
-          type: 'button',
-          text: { type: 'plain_text', text: '🔍 Search all products' },
+          type: "button",
+          text: { type: "plain_text", text: "🔍 Search all products" },
           action_id: `search_product_${item.index}`,
           value: String(item.index),
         },
@@ -85,47 +92,83 @@ function ambiguousItemBlock(item) {
 
 function editableItemBlock(item) {
   // Same as ambiguous but pre-selected on the current match (for "Edit" flow)
-  const currentOption = item.sizeId ? {
-    text: { type: 'plain_text', text: trunc(`${item.productName} · ${item.sizeName} — ${fmt(item.unitPrice)}`, 75) },
-    value: item.sizeId,
-  } : null;
+  const currentOption = item.sizeId
+    ? {
+        text: {
+          type: "plain_text",
+          text: trunc(
+            `${item.productName} · ${item.sizeName} — ${fmt(item.unitPrice)}`,
+            75,
+          ),
+        },
+        value: item.sizeId,
+      }
+    : null;
 
   const options = [];
   if (currentOption) options.push(currentOption);
-  item.candidates.slice(0, 4).filter(c => c.sizeId !== item.sizeId).forEach(c => {
-    options.push({
-      text: { type: 'plain_text', text: trunc(`${c.productName} · ${c.sizeName} — ${fmt(c.price)}`, 75) },
-      value: c.sizeId,
+  item.candidates
+    .slice(0, 4)
+    .filter((c) => c.sizeId !== item.sizeId)
+    .forEach((c) => {
+      options.push({
+        text: {
+          type: "plain_text",
+          text: trunc(`${c.productName} · ${c.sizeName} — ${fmt(c.price)}`, 75),
+        },
+        value: c.sizeId,
+      });
     });
-  });
 
   if (options.length === 0) {
-    return [{ type: 'section', text: { type: 'mrkdwn', text: `✏️  *"${item.raw}"* — search to replace:` } },
-      { type: 'actions', block_id: `item_actions_${item.index}`, elements: [{ type: 'button', text: { type: 'plain_text', text: '🔍 Search all products' }, action_id: `search_product_${item.index}`, value: String(item.index) }] }];
+    return [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `✏️  *"${item.raw}"* — search to replace:`,
+        },
+      },
+      {
+        type: "actions",
+        block_id: `item_actions_${item.index}`,
+        elements: [
+          {
+            type: "button",
+            text: { type: "plain_text", text: "🔍 Search all products" },
+            action_id: `search_product_${item.index}`,
+            value: String(item.index),
+          },
+        ],
+      },
+    ];
   }
 
   return [
-    { type: 'section', text: { type: 'mrkdwn', text: `✏️  *"${item.raw}"* — change product:` } },
     {
-      type: 'actions',
+      type: "section",
+      text: { type: "mrkdwn", text: `✏️  *"${item.raw}"* — change product:` },
+    },
+    {
+      type: "actions",
       block_id: `item_actions_${item.index}`,
       elements: [
         {
-          type: 'static_select',
+          type: "static_select",
           action_id: `product_pick_${item.index}`,
           initial_option: currentOption,
-          placeholder: { type: 'plain_text', text: 'Select product…' },
+          placeholder: { type: "plain_text", text: "Select product…" },
           options: options.slice(0, 5),
         },
         {
-          type: 'button',
-          text: { type: 'plain_text', text: 'Search all' },
+          type: "button",
+          text: { type: "plain_text", text: "Search all" },
           action_id: `search_product_${item.index}`,
           value: String(item.index),
         },
         {
-          type: 'button',
-          text: { type: 'plain_text', text: 'Done' },
+          type: "button",
+          text: { type: "plain_text", text: "Done" },
           action_id: `done_edit_item_${item.index}`,
           value: String(item.index),
         },
@@ -138,123 +181,163 @@ function editableItemBlock(item) {
 
 function buildReviewOrderBlocks(order, editingItemIndex = null) {
   const blocks = [];
-  const unresolvedItems = order.items.filter(i => i.issue !== null);
-  const zoneUnresolved = !order.fulfillment.resolved || !order.fulfillment.zoneId;
+  const unresolvedItems = order.items.filter((i) => i.issue !== null);
+  const zoneUnresolved =
+    !order.fulfillment.resolved || !order.fulfillment.zoneId;
 
   // Header
   const needsReviewCount = unresolvedItems.length + (zoneUnresolved ? 1 : 0);
-  const hasMismatch = needsReviewCount === 0 && order.reconciliation.status === 'mismatch';
-  const statusText = needsReviewCount > 0
-    ? `⚠️  *Needs review* — ${needsReviewCount} unresolved`
-    : hasMismatch
-    ? `⚠️  *Price mismatch* — all items resolved but total is off by ${fmt(Math.abs(order.reconciliation.gap))}`
-    : order.status === 'auto_accepted' ? '✅  *Auto-accepted* — verify and confirm' : '✅  *All items resolved* — ready to confirm';
+  const hasMismatch =
+    needsReviewCount === 0 && order.reconciliation.status === "mismatch";
+  const statusText =
+    needsReviewCount > 0
+      ? `⚠️  *Needs review* — ${needsReviewCount} unresolved`
+      : hasMismatch
+        ? `⚠️  *Price mismatch* — all items resolved but total is off by ${fmt(Math.abs(order.reconciliation.gap))}`
+        : order.status === "auto_accepted"
+          ? "✅  *Auto-accepted* — verify and confirm"
+          : "✅  *All items resolved* — ready to confirm";
 
-  const refLine = order.clientReference ? `Ref: \`${order.clientReference}\`` : '';
+  const refLine = order.clientReference
+    ? `Ref: \`${order.clientReference}\``
+    : "";
   blocks.push({
-    type: 'section',
-    text: { type: 'mrkdwn', text: `*REVIEW ORDER*${refLine ? '  ·  ' + refLine : ''}\n${statusText}` },
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: `*REVIEW ORDER*${refLine ? "  ·  " + refLine : ""}\n${statusText}`,
+    },
   });
-  blocks.push({ type: 'divider' });
+  blocks.push({ type: "divider" });
 
   // Customer
   const { customer, fulfillment } = order;
-  const customerParts = [customer.name, customer.instagram, customer.phone].filter(Boolean);
+  const customerParts = [
+    customer.name,
+    customer.instagram,
+    customer.phone,
+  ].filter(Boolean);
   blocks.push({
-    type: 'section',
-    text: { type: 'mrkdwn', text: `*CUSTOMER*\n${customerParts.join('  ·  ') || '—'}` },
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: `*CUSTOMER*\n${customerParts.join("  ·  ") || "—"}`,
+    },
   });
 
   if (order.recipient && (order.recipient.name || order.recipient.phone)) {
-    const recipientParts = [order.recipient.name, order.recipient.phone].filter(Boolean);
+    const recipientParts = [order.recipient.name, order.recipient.phone].filter(
+      Boolean,
+    );
     blocks.push({
-      type: 'context',
-      elements: [{ type: 'mrkdwn', text: `📦  *Recipient:*  ${recipientParts.join('  ·  ')}` }],
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `📦  *Recipient:*  ${recipientParts.join("  ·  ")}`,
+        },
+      ],
     });
   }
 
   // Fulfillment
-  const fulfillmentDesc = fulfillment.type === 'pickup'
-    ? `◉ *Pickup* — ${fulfillment.branch || 'Lekki'}  (₦0)`
-    : fulfillment.zoneName
-    ? `◉ *Delivery* — ${fulfillment.zoneName}  ${fmt(fulfillment.fee)}${fulfillment.branch ? '  (' + fulfillment.branch + ')' : ''}`
-    : `⚠️  *Delivery zone not resolved* — "${fulfillment.address || '?'}"`;
+  const fulfillmentDesc =
+    fulfillment.type === "pickup"
+      ? `◉ *Pickup* — ${fulfillment.branch || "Lekki"}  (₦0)`
+      : fulfillment.zoneName
+        ? `◉ *Delivery* — ${fulfillment.zoneName}  ${fmt(fulfillment.fee)}${fulfillment.branch ? "  (" + fulfillment.branch + ")" : ""}`
+        : `⚠️  *Delivery zone not resolved* — "${fulfillment.address || "?"}"`;
 
   blocks.push({
-    type: 'section',
-    text: { type: 'mrkdwn', text: fulfillmentDesc },
+    type: "section",
+    text: { type: "mrkdwn", text: fulfillmentDesc },
     accessory: {
-      type: 'button',
-      text: { type: 'plain_text', text: 'Change zone' },
-      action_id: 'change_zone',
-      value: 'change',
+      type: "button",
+      text: { type: "plain_text", text: "Change zone" },
+      action_id: "change_zone",
+      value: "change",
     },
   });
 
   {
     const humanDate = order.scheduledDate
-      ? new Date(order.scheduledDate + 'T12:00:00').toLocaleDateString('en-NG', {
-          timeZone: 'Africa/Lagos', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-        })
+      ? new Date(order.scheduledDate + "T12:00:00").toLocaleDateString(
+          "en-NG",
+          {
+            timeZone: "Africa/Lagos",
+            weekday: "long",
+            day: "numeric",
+            month: "long",
+            year: "numeric",
+          },
+        )
       : null;
     blocks.push({
-      type: 'section',
+      type: "section",
       text: {
-        type: 'mrkdwn',
-        text: humanDate ? `📅  *Delivery date:*  ${humanDate}` : `📅  _No delivery date set_`,
+        type: "mrkdwn",
+        text: humanDate
+          ? `📅  *Delivery date:*  ${humanDate}`
+          : `📅  _No delivery date set_`,
       },
       accessory: {
-        type: 'button',
-        text: { type: 'plain_text', text: order.scheduledDate ? 'Change date' : 'Set date' },
-        action_id: 'change_date',
-        value: 'change_date',
+        type: "button",
+        text: {
+          type: "plain_text",
+          text: order.scheduledDate ? "Change date" : "Set date",
+        },
+        action_id: "change_date",
+        value: "change_date",
       },
     });
   }
 
-  blocks.push({ type: 'divider' });
+  blocks.push({ type: "divider" });
 
   // Items
-  blocks.push({ type: 'section', text: { type: 'mrkdwn', text: '*ITEMS*' } });
+  blocks.push({ type: "section", text: { type: "mrkdwn", text: "*ITEMS*" } });
 
   for (const item of order.items) {
     if (editingItemIndex === item.index) {
-      editableItemBlock(item).forEach(b => blocks.push(b));
+      editableItemBlock(item).forEach((b) => blocks.push(b));
     } else if (item.issue !== null) {
-      ambiguousItemBlock(item).forEach(b => blocks.push(b));
+      ambiguousItemBlock(item).forEach((b) => blocks.push(b));
     } else {
       blocks.push(matchedItemBlock(item));
     }
   }
 
-  blocks.push({ type: 'divider' });
+  blocks.push({ type: "divider" });
 
   // Totals
-  const reconcText = order.reconciliation.status === 'matched'
-    ? '✅  Matches customer\'s stated total'
-    : order.reconciliation.status === 'unknown'
-    ? '—  No stated total to verify'
-    : `⚠️  Off by ${fmt(Math.abs(order.reconciliation.gap))}${order.reconciliation.hypothesis ? ' — ' + order.reconciliation.hypothesis : ''}`;
+  const reconcText =
+    order.reconciliation.status === "matched"
+      ? "✅  Matches customer's stated total"
+      : order.reconciliation.status === "unknown"
+        ? "—  No stated total to verify"
+        : `⚠️  Off by ${fmt(Math.abs(order.reconciliation.gap))}${order.reconciliation.hypothesis ? " — " + order.reconciliation.hypothesis : ""}`;
 
   blocks.push({
-    type: 'section',
+    type: "section",
     text: {
-      type: 'mrkdwn',
+      type: "mrkdwn",
       text: [
         `Items:  *${fmt(order.itemsSubtotal)}*`,
         `Delivery:  *${fmt(order.fulfillment.fee || 0)}*`,
         `─────────────────`,
         `TOTAL:  *${fmt(order.orderTotal)}*`,
         reconcText,
-      ].join('\n'),
+      ].join("\n"),
     },
   });
 
   // Notes
   if (order.notes && order.notes.length > 0) {
     blocks.push({
-      type: 'context',
-      elements: [{ type: 'mrkdwn', text: `📌 *Note:* ${order.notes.join(' · ')}` }],
+      type: "context",
+      elements: [
+        { type: "mrkdwn", text: `📌 *Note:* ${order.notes.join(" · ")}` },
+      ],
     });
   }
 
@@ -262,64 +345,71 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
   {
     const ps = order.paymentStatus;
     let paymentText;
-    if (ps === 'verifying') {
-      paymentText = '🔍  _Verifying payment…_';
-    } else if (ps === 'verified') {
-      const p     = order.paymentData || {};
-      const paid  = p.amount ? fmt(p.amount) + '  ·  ' : '';
-      const payer = p.payerName ? `Payer: *${p.payerName}*  ·  ` : '';
-      paymentText = `✅  *Payment verified* — ${paid}${payer}Ref: \`${p.transactionRef || '—'}\``;
-    } else if (ps === 'not_found') {
-      paymentText = '⚠️  *No matching payment found* — use Refetch Payment or Request OTP below';
-    } else if (ps === 'error') {
-      paymentText = `⚠️  *Payment check failed* — ${order.paymentError || 'unknown error'}`;
+    if (ps === "verifying") {
+      paymentText = "🔍  _Verifying payment…_";
+    } else if (ps === "verified") {
+      const p = order.paymentData || {};
+      const paid = p.amount ? fmt(p.amount) + "  ·  " : "";
+      const payer = p.payerName ? `Payer: *${p.payerName}*  ·  ` : "";
+      paymentText = `✅  *Payment verified* — ${paid}${payer}Ref: \`${p.transactionRef || "—"}\``;
+    } else if (ps === "not_found") {
+      paymentText =
+        "⚠️  *No matching payment found* — use Refetch Payment or Request OTP below";
+    } else if (ps === "error") {
+      paymentText = `⚠️  *Payment check failed* — ${order.paymentError || "unknown error"}`;
     }
     if (paymentText) {
-      blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: paymentText }] });
+      blocks.push({
+        type: "context",
+        elements: [{ type: "mrkdwn", text: paymentText }],
+      });
     }
   }
 
-  blocks.push({ type: 'divider' });
+  blocks.push({ type: "divider" });
 
   // Action buttons
   const canConfirm = unresolvedItems.length === 0 && !zoneUnresolved;
 
   const rejectButton = {
-    type: 'button',
-    text: { type: 'plain_text', text: 'Reject' },
-    style: 'danger',
-    action_id: 'reject_order',
-    value: 'reject',
+    type: "button",
+    text: { type: "plain_text", text: "Reject" },
+    style: "danger",
+    action_id: "reject_order",
+    value: "reject",
     confirm: {
-      title: { type: 'plain_text', text: 'Reject this order?' },
-      text: { type: 'mrkdwn', text: 'The order will be discarded and not pushed to Zupa.' },
-      confirm: { type: 'plain_text', text: 'Yes, reject' },
-      deny:    { type: 'plain_text', text: 'Cancel' },
+      title: { type: "plain_text", text: "Reject this order?" },
+      text: {
+        type: "mrkdwn",
+        text: "The order will be discarded and not pushed to Zupa.",
+      },
+      confirm: { type: "plain_text", text: "Yes, reject" },
+      deny: { type: "plain_text", text: "Cancel" },
     },
   };
 
   // When payment not found and order is otherwise ready: replace Confirm with
   // inline options to avoid an extra navigation step.
-  if (order.paymentStatus === 'not_found' && canConfirm) {
+  if (order.paymentStatus === "not_found" && canConfirm) {
     blocks.push({
-      type: 'actions',
+      type: "actions",
       elements: [
         rejectButton,
         {
-          type: 'button',
-          text: { type: 'plain_text', text: '🔄  Refetch Payment' },
-          action_id: 'refetch_payment',
+          type: "button",
+          text: { type: "plain_text", text: "🔄  Refetch Payment" },
+          action_id: "refetch_payment",
         },
         {
-          type: 'button',
-          text: { type: 'plain_text', text: '👤  Try Different Name' },
-          action_id: 'try_payment_name',
+          type: "button",
+          text: { type: "plain_text", text: "👤  Try Different Name" },
+          action_id: "try_payment_name",
         },
         {
-          type: 'button',
-          text: { type: 'plain_text', text: '📲  Request OTP' },
-          action_id: 'request_otp',
-          style: 'primary',
+          type: "button",
+          text: { type: "plain_text", text: "📲  Request OTP" },
+          action_id: "request_otp",
+          style: "primary",
         },
       ],
     });
@@ -327,29 +417,32 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
   }
 
   const confirmButton = {
-    type: 'button',
-    text: { type: 'plain_text', text: canConfirm ? 'Confirm & Push to Zupa' : '🔒 Resolve issues first' },
-    style: canConfirm ? 'primary' : undefined,
-    action_id: 'confirm_order',
-    value: 'confirm',
+    type: "button",
+    text: {
+      type: "plain_text",
+      text: canConfirm ? "Confirm & Push to Zupa" : "🔒 Resolve issues first",
+    },
+    style: canConfirm ? "primary" : undefined,
+    action_id: "confirm_order",
+    value: "confirm",
   };
 
   if (hasMismatch) {
     const gapText = fmt(Math.abs(order.reconciliation.gap));
     confirmButton.confirm = {
-      title: { type: 'plain_text', text: 'Price mismatch — confirm anyway?' },
+      title: { type: "plain_text", text: "Price mismatch — confirm anyway?" },
       text: {
-        type: 'mrkdwn',
-        text: `Total is off by *${gapText}*${order.reconciliation.hypothesis ? ' — ' + order.reconciliation.hypothesis : ''}. Submit to Zupa anyway?`,
+        type: "mrkdwn",
+        text: `Total is off by *${gapText}*${order.reconciliation.hypothesis ? " — " + order.reconciliation.hypothesis : ""}. Submit to Zupa anyway?`,
       },
-      confirm: { type: 'plain_text', text: 'Yes, submit anyway' },
-      deny: { type: 'plain_text', text: 'Cancel' },
+      confirm: { type: "plain_text", text: "Yes, submit anyway" },
+      deny: { type: "plain_text", text: "Cancel" },
     };
   }
 
   blocks.push({
-    type: 'actions',
-    elements: [ rejectButton, confirmButton ],
+    type: "actions",
+    elements: [rejectButton, confirmButton],
   });
 
   return blocks;
@@ -361,92 +454,113 @@ function buildConfirmationBlocks(order, orderNumber, confirmedBy) {
   const blocks = [];
 
   // ── Header ────────────────────────────────────────────────────────────────
-  const refPart  = order.clientReference ? `  ·  Ref: \`${order.clientReference}\`` : '';
-  const numPart  = orderNumber ? `  ·  Zupa: \`${orderNumber}\`` : '';
+  const refPart = order.clientReference
+    ? `  ·  Ref: \`${order.clientReference}\``
+    : "";
+  const numPart = orderNumber ? `  ·  Zupa: \`${orderNumber}\`` : "";
   blocks.push({
-    type: 'section',
+    type: "section",
     text: {
-      type: 'mrkdwn',
+      type: "mrkdwn",
       text: `✅  *ORDER CONFIRMED*${refPart}${numPart}\nConfirmed by <@${confirmedBy}>`,
     },
   });
-  blocks.push({ type: 'divider' });
+  blocks.push({ type: "divider" });
 
   // ── Customer ──────────────────────────────────────────────────────────────
   const customerParts = [
     order.customer?.name,
-    order.customer?.instagram ? `@${order.customer.instagram.replace(/^@/, '')}` : null,
+    order.customer?.instagram
+      ? `@${order.customer.instagram.replace(/^@/, "")}`
+      : null,
     order.customer?.phone,
   ].filter(Boolean);
   blocks.push({
-    type: 'section',
-    text: { type: 'mrkdwn', text: `*CUSTOMER*\n${customerParts.join('  ·  ') || '—'}` },
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: `*CUSTOMER*\n${customerParts.join("  ·  ") || "—"}`,
+    },
   });
 
   if (order.recipient && (order.recipient.name || order.recipient.phone)) {
-    const rParts = [order.recipient.name, order.recipient.phone].filter(Boolean);
+    const rParts = [order.recipient.name, order.recipient.phone].filter(
+      Boolean,
+    );
     blocks.push({
-      type: 'context',
-      elements: [{ type: 'mrkdwn', text: `📦  *Recipient:*  ${rParts.join('  ·  ')}` }],
+      type: "context",
+      elements: [
+        { type: "mrkdwn", text: `📦  *Recipient:*  ${rParts.join("  ·  ")}` },
+      ],
     });
   }
 
   // ── Fulfillment ───────────────────────────────────────────────────────────
-  const isPickup = order.fulfillment?.type === 'pickup';
+  const isPickup = order.fulfillment?.type === "pickup";
   const fulfillmentText = isPickup
-    ? `◉  *Pickup* — ${order.fulfillment?.branch || 'Lekki'}  _(₦0)_`
-    : `🚚  *Delivery* — ${order.fulfillment?.zoneName || order.fulfillment?.address || '—'}${order.fulfillment?.branch ? '  (' + order.fulfillment.branch + ')' : ''}  —  ${fmt(order.fulfillment?.fee || 0)}`;
+    ? `◉  *Pickup* — ${order.fulfillment?.branch || "Lekki"}  _(₦0)_`
+    : `🚚  *Delivery* — ${order.fulfillment?.zoneName || order.fulfillment?.address || "—"}${order.fulfillment?.branch ? "  (" + order.fulfillment.branch + ")" : ""}  —  ${fmt(order.fulfillment?.fee || 0)}`;
   blocks.push({
-    type: 'section',
-    text: { type: 'mrkdwn', text: fulfillmentText },
+    type: "section",
+    text: { type: "mrkdwn", text: fulfillmentText },
   });
 
   if (order.scheduledDate) {
-    const humanDate = new Date(order.scheduledDate + 'T12:00:00').toLocaleDateString('en-NG', {
-      timeZone: 'Africa/Lagos', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    const humanDate = new Date(
+      order.scheduledDate + "T12:00:00",
+    ).toLocaleDateString("en-NG", {
+      timeZone: "Africa/Lagos",
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
     });
     blocks.push({
-      type: 'context',
-      elements: [{ type: 'mrkdwn', text: `📅  *Delivery date:*  ${humanDate}` }],
+      type: "context",
+      elements: [
+        { type: "mrkdwn", text: `📅  *Delivery date:*  ${humanDate}` },
+      ],
     });
   }
 
-  blocks.push({ type: 'divider' });
+  blocks.push({ type: "divider" });
 
   // ── Items ─────────────────────────────────────────────────────────────────
-  blocks.push({ type: 'section', text: { type: 'mrkdwn', text: '*ITEMS*' } });
+  blocks.push({ type: "section", text: { type: "mrkdwn", text: "*ITEMS*" } });
 
-  for (const item of (order.items || [])) {
-    const unitNote = item.qty > 1 ? `  _(${fmt(item.unitPrice)} each)_` : '';
+  for (const item of order.items || []) {
+    const unitNote = item.qty > 1 ? `  _(${fmt(item.unitPrice)} each)_` : "";
     blocks.push({
-      type: 'section',
+      type: "section",
       text: {
-        type: 'mrkdwn',
+        type: "mrkdwn",
         text: `×${item.qty}  *${item.productName}*  ·  _${item.sizeName}_  —  ${fmt(item.lineTotal)}${unitNote}`,
       },
     });
   }
 
-  blocks.push({ type: 'divider' });
+  blocks.push({ type: "divider" });
 
   // ── Totals ────────────────────────────────────────────────────────────────
   blocks.push({
-    type: 'section',
+    type: "section",
     text: {
-      type: 'mrkdwn',
+      type: "mrkdwn",
       text: [
         `Items:  *${fmt(order.itemsSubtotal)}*`,
         `Delivery:  *${fmt(order.fulfillment?.fee || 0)}*`,
         `─────────────────`,
         `TOTAL:  *${fmt(order.orderTotal)}*`,
-      ].join('\n'),
+      ].join("\n"),
     },
   });
 
   if (order.notes && order.notes.length > 0) {
     blocks.push({
-      type: 'context',
-      elements: [{ type: 'mrkdwn', text: `📌  _${order.notes.join('  ·  ')}_` }],
+      type: "context",
+      elements: [
+        { type: "mrkdwn", text: `📌  _${order.notes.join("  ·  ")}_` },
+      ],
     });
   }
 
@@ -456,28 +570,30 @@ function buildConfirmationBlocks(order, orderNumber, confirmedBy) {
 // ── Pre-parse duplicate warning ───────────────────────────────────────────────
 
 function buildDuplicateWarningBlocks(duplicate) {
-  const when = new Date(duplicate.confirmed_at).toLocaleString('en-NG', { timeZone: 'Africa/Lagos' });
+  const when = new Date(duplicate.confirmed_at).toLocaleString("en-NG", {
+    timeZone: "Africa/Lagos",
+  });
   return [
     {
-      type: 'section',
+      type: "section",
       text: {
-        type: 'mrkdwn',
-        text: `⚠️ *Duplicate order detected*\nThis exact message was already submitted as order \`${duplicate.order_number || '—'}\` for *${duplicate.customer_name || '—'}* on ${when}.\n\nWould you like to parse it anyway?`,
+        type: "mrkdwn",
+        text: `⚠️ *Duplicate order detected*\nThis exact message was already submitted as order \`${duplicate.order_number || "—"}\` for *${duplicate.customer_name || "—"}* on ${when}.\n\nWould you like to parse it anyway?`,
       },
     },
     {
-      type: 'actions',
+      type: "actions",
       elements: [
         {
-          type: 'button',
-          text: { type: 'plain_text', text: 'Cancel' },
-          action_id: 'cancel_parse',
+          type: "button",
+          text: { type: "plain_text", text: "Cancel" },
+          action_id: "cancel_parse",
         },
         {
-          type: 'button',
-          text: { type: 'plain_text', text: 'Parse anyway' },
-          style: 'danger',
-          action_id: 'parse_anyway',
+          type: "button",
+          text: { type: "plain_text", text: "Parse anyway" },
+          style: "danger",
+          action_id: "parse_anyway",
         },
       ],
     },
@@ -487,64 +603,81 @@ function buildDuplicateWarningBlocks(duplicate) {
 // ── Zone change modal ─────────────────────────────────────────────────────────
 
 function buildZonePickerModal(currentAddress, privateMetadata) {
-  const rideHailOptions = rideHailTiers.map(t => ({
-    text: { type: 'plain_text', text: trunc(`${t.name} — ${fmt(t.price)}`, 75) },
+  const rideHailOptions = rideHailTiers.map((t) => ({
+    text: {
+      type: "plain_text",
+      text: trunc(`${t.name} — ${fmt(t.price)}`, 75),
+    },
     value: t.id,
   }));
 
-  const pickupOptions = pickupRows.map(r => ({
-    text: { type: 'plain_text', text: trunc(r.name, 75) },
+  const pickupOptions = pickupRows.map((r) => ({
+    text: { type: "plain_text", text: trunc(r.name, 75) },
     value: r.id,
   }));
 
   return {
-    type: 'modal',
-    callback_id: 'zone_picker_submit',
+    type: "modal",
+    callback_id: "zone_picker_submit",
     private_metadata: privateMetadata,
-    title: { type: 'plain_text', text: 'Change Zone' },
-    submit: { type: 'plain_text', text: 'Apply' },
-    close: { type: 'plain_text', text: 'Cancel' },
+    title: { type: "plain_text", text: "Change Zone" },
+    submit: { type: "plain_text", text: "Apply" },
+    close: { type: "plain_text", text: "Cancel" },
     blocks: [
       {
-        type: 'input',
-        block_id: 'named_zone_select',
-        label: { type: 'plain_text', text: 'Search delivery zone' },
+        type: "input",
+        block_id: "named_zone_select",
+        label: { type: "plain_text", text: "Search delivery zone" },
         optional: true,
         element: {
-          type: 'external_select',
-          action_id: 'zone_search_select',
-          placeholder: { type: 'plain_text', text: 'Type to search all cities… e.g. "Lekki", "VI", "Ikoyi"' },
+          type: "external_select",
+          action_id: "zone_search_select",
+          placeholder: {
+            type: "plain_text",
+            text: 'Type to search all cities… e.g. "Lekki", "VI", "Ikoyi"',
+          },
           min_query_length: 0,
         },
       },
-      { type: 'divider' },
+      { type: "divider" },
       {
-        type: 'input',
-        block_id: 'ride_hail_select',
-        label: { type: 'plain_text', text: 'Or select a ride-hail tier (Uber / Bolt)' },
+        type: "input",
+        block_id: "ride_hail_select",
+        label: {
+          type: "plain_text",
+          text: "Or select a ride-hail tier (Uber / Bolt)",
+        },
         optional: true,
         element: {
-          type: 'static_select',
-          action_id: 'ride_hail_input',
-          placeholder: { type: 'plain_text', text: 'Select tier…' },
+          type: "static_select",
+          action_id: "ride_hail_input",
+          placeholder: { type: "plain_text", text: "Select tier…" },
           options: rideHailOptions,
         },
       },
-      ...(pickupOptions.length > 0 ? [
-        { type: 'divider' },
-        {
-          type: 'input',
-          block_id: 'pickup_select',
-          label: { type: 'plain_text', text: 'Or select a pickup location' },
-          optional: true,
-          element: {
-            type: 'static_select',
-            action_id: 'pickup_input',
-            placeholder: { type: 'plain_text', text: 'Select pickup location…' },
-            options: pickupOptions,
-          },
-        },
-      ] : []),
+      ...(pickupOptions.length > 0
+        ? [
+            { type: "divider" },
+            {
+              type: "input",
+              block_id: "pickup_select",
+              label: {
+                type: "plain_text",
+                text: "Or select a pickup location",
+              },
+              optional: true,
+              element: {
+                type: "static_select",
+                action_id: "pickup_input",
+                placeholder: {
+                  type: "plain_text",
+                  text: "Select pickup location…",
+                },
+                options: pickupOptions,
+              },
+            },
+          ]
+        : []),
     ],
   };
 }
@@ -553,21 +686,27 @@ function buildZonePickerModal(currentAddress, privateMetadata) {
 
 function buildProductSearchModal(itemIndex, privateMetadata) {
   return {
-    type: 'modal',
-    callback_id: 'product_search_submit',
-    private_metadata: JSON.stringify({ ...JSON.parse(privateMetadata || '{}'), itemIndex }),
-    title: { type: 'plain_text', text: 'Search Products' },
-    submit: { type: 'plain_text', text: 'Apply' },
-    close: { type: 'plain_text', text: 'Cancel' },
+    type: "modal",
+    callback_id: "product_search_submit",
+    private_metadata: JSON.stringify({
+      ...JSON.parse(privateMetadata || "{}"),
+      itemIndex,
+    }),
+    title: { type: "plain_text", text: "Search Products" },
+    submit: { type: "plain_text", text: "Apply" },
+    close: { type: "plain_text", text: "Cancel" },
     blocks: [
       {
-        type: 'input',
-        block_id: 'product_select',
-        label: { type: 'plain_text', text: 'Product & size' },
+        type: "input",
+        block_id: "product_select",
+        label: { type: "plain_text", text: "Product & size" },
         element: {
-          type: 'external_select',
-          action_id: 'product_search_select',
-          placeholder: { type: 'plain_text', text: 'Type to search… e.g. "za", "banana 6", "choc"' },
+          type: "external_select",
+          action_id: "product_search_select",
+          placeholder: {
+            type: "plain_text",
+            text: 'Type to search… e.g. "za", "banana 6", "choc"',
+          },
           min_query_length: 1,
         },
       },
@@ -577,24 +716,24 @@ function buildProductSearchModal(itemIndex, privateMetadata) {
 
 function buildDatePickerModal(privateMetadata, initialDate) {
   const dateElement = {
-    type: 'datepicker',
-    action_id: 'date_pick',
-    placeholder: { type: 'plain_text', text: 'Select delivery date' },
+    type: "datepicker",
+    action_id: "date_pick",
+    placeholder: { type: "plain_text", text: "Select delivery date" },
   };
   if (initialDate) dateElement.initial_date = initialDate;
 
   return {
-    type: 'modal',
-    callback_id: 'date_picker_submit',
+    type: "modal",
+    callback_id: "date_picker_submit",
     private_metadata: privateMetadata,
-    title: { type: 'plain_text', text: 'Set Delivery Date' },
-    submit: { type: 'plain_text', text: 'Apply' },
-    close: { type: 'plain_text', text: 'Cancel' },
+    title: { type: "plain_text", text: "Set Delivery Date" },
+    submit: { type: "plain_text", text: "Apply" },
+    close: { type: "plain_text", text: "Cancel" },
     blocks: [
       {
-        type: 'input',
-        block_id: 'delivery_date_block',
-        label: { type: 'plain_text', text: 'Delivery date' },
+        type: "input",
+        block_id: "delivery_date_block",
+        label: { type: "plain_text", text: "Delivery date" },
         element: dateElement,
       },
     ],
@@ -603,21 +742,24 @@ function buildDatePickerModal(privateMetadata, initialDate) {
 
 function buildModAddSearchModal(meta) {
   return {
-    type: 'modal',
-    callback_id: 'mod_add_search_modal',
+    type: "modal",
+    callback_id: "mod_add_search_modal",
     private_metadata: JSON.stringify(meta),
-    title: { type: 'plain_text', text: 'Search Products' },
-    submit: { type: 'plain_text', text: 'Apply' },
-    close: { type: 'plain_text', text: 'Cancel' },
+    title: { type: "plain_text", text: "Search Products" },
+    submit: { type: "plain_text", text: "Apply" },
+    close: { type: "plain_text", text: "Cancel" },
     blocks: [
       {
-        type: 'input',
-        block_id: 'product_select',
-        label: { type: 'plain_text', text: 'Product & size' },
+        type: "input",
+        block_id: "product_select",
+        label: { type: "plain_text", text: "Product & size" },
         element: {
-          type: 'external_select',
-          action_id: 'product_search_select',
-          placeholder: { type: 'plain_text', text: 'Type to search… e.g. "za", "banana 6", "choc"' },
+          type: "external_select",
+          action_id: "product_search_select",
+          placeholder: {
+            type: "plain_text",
+            text: 'Type to search… e.g. "za", "banana 6", "choc"',
+          },
           min_query_length: 1,
         },
       },
@@ -631,31 +773,44 @@ function buildModReviewBlocks(mod, confirmedOrder) {
   const blocks = [];
 
   blocks.push({
-    type: 'section',
+    type: "section",
     text: {
-      type: 'mrkdwn',
-      text: `📝 *ORDER MODIFICATION*\nOrder \`${confirmedOrder.orderNumber || '—'}\`  ·  ${confirmedOrder.customer?.name || '—'}`,
+      type: "mrkdwn",
+      text: `📝 *ORDER MODIFICATION*\nOrder \`${confirmedOrder.orderNumber || "—"}\`  ·  ${confirmedOrder.customer?.name || "—"}`,
     },
   });
-  blocks.push({ type: 'divider' });
+  blocks.push({ type: "divider" });
 
   // ── Customer update ───────────────────────────────────────────────────────
   if (mod.newName || mod.newPhone) {
     const lines = [];
-    if (mod.newName)  lines.push(`  👤  Name: *${mod.newName}*`);
+    if (mod.newName) lines.push(`  👤  Name: *${mod.newName}*`);
     if (mod.newPhone) lines.push(`  📱  Phone: *${mod.newPhone}*`);
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*CUSTOMER UPDATE:*\n${lines.join('\n')}` } });
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: `*CUSTOMER UPDATE:*\n${lines.join("\n")}` },
+    });
   }
 
   // ── Recipient update ──────────────────────────────────────────────────────
   if (mod.newRecipient && (mod.newRecipient.name || mod.newRecipient.phone)) {
     const lines = [];
-    if (mod.newRecipient.name)  lines.push(`  👤  Name: *${mod.newRecipient.name}*`);
-    if (mod.newRecipient.phone) lines.push(`  📱  Phone: *${mod.newRecipient.phone}*`);
+    if (mod.newRecipient.name)
+      lines.push(`  👤  Name: *${mod.newRecipient.name}*`);
+    if (mod.newRecipient.phone)
+      lines.push(`  📱  Phone: *${mod.newRecipient.phone}*`);
     const prev = confirmedOrder.recipient
-      ? [confirmedOrder.recipient.name, confirmedOrder.recipient.phone].filter(Boolean).join('  ·  ')
-      : 'none';
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `*RECIPIENT UPDATE* _(was: ${prev})_\n${lines.join('\n')}` } });
+      ? [confirmedOrder.recipient.name, confirmedOrder.recipient.phone]
+          .filter(Boolean)
+          .join("  ·  ")
+      : "none";
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*RECIPIENT UPDATE* _(was: ${prev})_\n${lines.join("\n")}`,
+      },
+    });
   }
 
   // ── Resolved add items — show match prominently + Search all button ───────
@@ -663,29 +818,49 @@ function buildModReviewBlocks(mod, confirmedOrder) {
     const item = mod.addItems[i];
     const candidates = item.candidates || [];
     if (candidates.length > 1) {
-      const options = candidates.map(c => ({
-        text: { type: 'plain_text', text: trunc(`${c.productName} · ${c.sizeName} — ${fmt(c.price)}`, 75) },
+      const options = candidates.map((c) => ({
+        text: {
+          type: "plain_text",
+          text: trunc(`${c.productName} · ${c.sizeName} — ${fmt(c.price)}`, 75),
+        },
         value: c.sizeId,
       }));
-      const initial_option = options.find(o => o.value === item.sizeId) || options[0];
+      const initial_option =
+        options.find((o) => o.value === item.sizeId) || options[0];
       blocks.push({
-        type: 'section',
+        type: "section",
         block_id: `mod_add_pick_${i}`,
-        text: { type: 'mrkdwn', text: `➕  *Add ×${item.qty}:*  *${item.productName} · ${item.sizeName}* — ${fmt(item.lineTotal)}\n_${candidates.length} matches — tap to change:_` },
+        text: {
+          type: "mrkdwn",
+          text: `➕  *Add ×${item.qty}:*  *${item.productName} · ${item.sizeName}* — ${fmt(item.lineTotal)}\n_${candidates.length} matches — tap to change:_`,
+        },
         accessory: {
-          type: 'static_select',
-          action_id: 'mod_add_pick',
+          type: "static_select",
+          action_id: "mod_add_pick",
           initial_option,
           options,
         },
       });
     } else {
-      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `➕  *Add ×${item.qty}:*  *${item.productName} · ${item.sizeName}* — ${fmt(item.lineTotal)}` } });
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `➕  *Add ×${item.qty}:*  *${item.productName} · ${item.sizeName}* — ${fmt(item.lineTotal)}`,
+        },
+      });
     }
     blocks.push({
-      type: 'actions',
+      type: "actions",
       block_id: `mod_add_btn_${i}`,
-      elements: [{ type: 'button', text: { type: 'plain_text', text: '🔍 Search all products' }, action_id: 'mod_add_search_btn', value: String(i) }],
+      elements: [
+        {
+          type: "button",
+          text: { type: "plain_text", text: "🔍 Search all products" },
+          action_id: "mod_add_search_btn",
+          value: String(i),
+        },
+      ],
     });
   }
 
@@ -693,41 +868,65 @@ function buildModReviewBlocks(mod, confirmedOrder) {
   for (let i = 0; i < mod.unresolvedAdditions.length; i++) {
     const ua = mod.unresolvedAdditions[i];
     blocks.push({
-      type: 'section',
+      type: "section",
       block_id: `mod_add_search_${i}`,
-      text: { type: 'mrkdwn', text: `⚠️  *"${trunc(ua.raw, 60)}"* — not found, search to add:` },
+      text: {
+        type: "mrkdwn",
+        text: `⚠️  *"${trunc(ua.raw, 60)}"* — not found, search to add:`,
+      },
       accessory: {
-        type: 'external_select',
-        action_id: 'mod_add_search',
-        placeholder: { type: 'plain_text', text: 'Search products…' },
+        type: "external_select",
+        action_id: "mod_add_search",
+        placeholder: { type: "plain_text", text: "Search products…" },
         min_query_length: 0,
       },
     });
     blocks.push({
-      type: 'actions',
+      type: "actions",
       block_id: `mod_add_ubtn_${i}`,
-      elements: [{ type: 'button', text: { type: 'plain_text', text: '🔍 Search all products' }, action_id: 'mod_add_search_btn', value: `u_${i}` }],
+      elements: [
+        {
+          type: "button",
+          text: { type: "plain_text", text: "🔍 Search all products" },
+          action_id: "mod_add_search_btn",
+          value: `u_${i}`,
+        },
+      ],
     });
   }
 
   // ── Remove items — show match prominently + all-order-items dropdown ──────
-  const allOrderOptions = (confirmedOrder.items || []).map(oi => ({
-    text: { type: 'plain_text', text: trunc(`${oi.productName} · ${oi.sizeName} ×${oi.qty} — ${fmt(oi.unitPrice)}`, 75) },
+  const allOrderOptions = (confirmedOrder.items || []).map((oi) => ({
+    text: {
+      type: "plain_text",
+      text: trunc(
+        `${oi.productName} · ${oi.sizeName} ×${oi.qty} — ${fmt(oi.unitPrice)}`,
+        75,
+      ),
+    },
     value: oi.sizeId,
   }));
 
   for (let i = 0; i < mod.removeItems.length; i++) {
     const item = mod.removeItems[i];
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `➖  *Remove:*  *${item.productName} · ${item.sizeName}*  ×${item.qty}` } });
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `➖  *Remove:*  *${item.productName} · ${item.sizeName}*  ×${item.qty}`,
+      },
+    });
     if (allOrderOptions.length > 0) {
-      const initial_option = allOrderOptions.find(o => o.value === item.sizeId) || allOrderOptions[0];
+      const initial_option =
+        allOrderOptions.find((o) => o.value === item.sizeId) ||
+        allOrderOptions[0];
       blocks.push({
-        type: 'section',
+        type: "section",
         block_id: `mod_remove_pick_${i}`,
-        text: { type: 'mrkdwn', text: `_Select which order item to remove:_` },
+        text: { type: "mrkdwn", text: `_Select which order item to remove:_` },
         accessory: {
-          type: 'static_select',
-          action_id: 'mod_remove_pick',
+          type: "static_select",
+          action_id: "mod_remove_pick",
           initial_option,
           options: allOrderOptions,
         },
@@ -740,69 +939,125 @@ function buildModReviewBlocks(mod, confirmedOrder) {
     const ur = mod.unresolvedRemovals[j];
     if (allOrderOptions.length > 0) {
       blocks.push({
-        type: 'section',
+        type: "section",
         block_id: `mod_remove_unresolved_${j}`,
-        text: { type: 'mrkdwn', text: `⚠️  *"${trunc(ur.raw, 40)}"* — not found in order. Select item to remove:` },
+        text: {
+          type: "mrkdwn",
+          text: `⚠️  *"${trunc(ur.raw, 40)}"* — not found in order. Select item to remove:`,
+        },
         accessory: {
-          type: 'static_select',
-          action_id: 'mod_remove_unresolved_pick',
-          placeholder: { type: 'plain_text', text: 'Select item to remove…' },
+          type: "static_select",
+          action_id: "mod_remove_unresolved_pick",
+          placeholder: { type: "plain_text", text: "Select item to remove…" },
           options: allOrderOptions,
         },
       });
     } else {
-      blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `⚠️  *"${trunc(ur.raw, 40)}"* — not in this order` } });
+      blocks.push({
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `⚠️  *"${trunc(ur.raw, 40)}"* — not in this order`,
+        },
+      });
     }
   }
 
   // ── Scheduled date change ─────────────────────────────────────────────────
   if (mod.newScheduledDate) {
-    const humanDate = new Date(mod.newScheduledDate + 'T12:00:00').toLocaleDateString('en-NG', {
-      timeZone: 'Africa/Lagos', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    const humanDate = new Date(
+      mod.newScheduledDate + "T12:00:00",
+    ).toLocaleDateString("en-NG", {
+      timeZone: "Africa/Lagos",
+      weekday: "long",
+      day: "numeric",
+      month: "long",
+      year: "numeric",
     });
     const prev = confirmedOrder.scheduledDate
-      ? new Date(confirmedOrder.scheduledDate + 'T12:00:00').toLocaleDateString('en-NG', { timeZone: 'Africa/Lagos', day: 'numeric', month: 'short', year: 'numeric' })
-      : 'same day';
+      ? new Date(confirmedOrder.scheduledDate + "T12:00:00").toLocaleDateString(
+          "en-NG",
+          {
+            timeZone: "Africa/Lagos",
+            day: "numeric",
+            month: "short",
+            year: "numeric",
+          },
+        )
+      : "same day";
     blocks.push({
-      type: 'section',
-      text: { type: 'mrkdwn', text: `📅  *DELIVERY DATE*  _(was: ${prev})_\n  →  *${humanDate}*` },
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `📅  *DELIVERY DATE*  _(was: ${prev})_\n  →  *${humanDate}*`,
+      },
     });
   }
 
   // ── Zone change — always show picker when an address was detected ─────────
   if (mod.newAddress) {
-    const prev = confirmedOrder.fulfillment?.zoneName || confirmedOrder.fulfillment?.address || '?';
+    const prev =
+      confirmedOrder.fulfillment?.zoneName ||
+      confirmedOrder.fulfillment?.address ||
+      "?";
     const matchText = mod.newZoneId
-      ? `✅  Matched: *${mod.newZoneName}*  ${fmt(mod.newFee)}  (${mod.newBranch || ''})`
+      ? `✅  Matched: *${mod.newZoneName}*  ${fmt(mod.newFee)}  (${mod.newBranch || ""})`
       : `⚠️  No zone matched for _"${mod.newAddress}"_ — search below`;
     blocks.push({
-      type: 'section',
-      block_id: 'mod_zone_search',
-      text: { type: 'mrkdwn', text: `*ADDRESS CHANGE* _(was: ${prev})_\n${matchText}` },
+      type: "section",
+      block_id: "mod_zone_search",
+      text: {
+        type: "mrkdwn",
+        text: `*ADDRESS CHANGE* _(was: ${prev})_\n${matchText}`,
+      },
       accessory: {
-        type: 'external_select',
-        action_id: 'mod_zone_select',
-        placeholder: { type: 'plain_text', text: 'Confirm or change zone…' },
+        type: "external_select",
+        action_id: "mod_zone_select",
+        placeholder: { type: "plain_text", text: "Confirm or change zone…" },
         min_query_length: 0,
       },
     });
   }
 
-  blocks.push({ type: 'divider' });
+  blocks.push({ type: "divider" });
 
-  const canApply = mod.addItems.length > 0 || mod.removeItems.length > 0 || mod.newZoneId || mod.newName || mod.newPhone || mod.newScheduledDate || (mod.newRecipient && (mod.newRecipient.name || mod.newRecipient.phone));
-  const hasAnyChange = canApply || mod.unresolvedAdditions.length > 0 || (mod.newAddress && !mod.newZoneId);
+  const canApply =
+    mod.addItems.length > 0 ||
+    mod.removeItems.length > 0 ||
+    mod.newZoneId ||
+    mod.newName ||
+    mod.newPhone ||
+    mod.newScheduledDate ||
+    (mod.newRecipient && (mod.newRecipient.name || mod.newRecipient.phone));
+  const hasAnyChange =
+    canApply ||
+    mod.unresolvedAdditions.length > 0 ||
+    (mod.newAddress && !mod.newZoneId);
 
   if (hasAnyChange) {
-    const elements = [{ type: 'button', text: { type: 'plain_text', text: 'Cancel' }, action_id: 'mod_reject' }];
+    const elements = [
+      {
+        type: "button",
+        text: { type: "plain_text", text: "Cancel" },
+        action_id: "mod_reject",
+      },
+    ];
     if (canApply) {
-      elements.push({ type: 'button', text: { type: 'plain_text', text: 'Apply Modification' }, style: 'primary', action_id: 'mod_confirm' });
+      elements.push({
+        type: "button",
+        text: { type: "plain_text", text: "Apply Modification" },
+        style: "primary",
+        action_id: "mod_confirm",
+      });
     }
-    blocks.push({ type: 'actions', block_id: 'mod_actions', elements });
+    blocks.push({ type: "actions", block_id: "mod_actions", elements });
   } else {
     blocks.push({
-      type: 'section',
-      text: { type: 'mrkdwn', text: "_No actionable changes found. Reply again with what you'd like to add, remove, or change._" },
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: "_No actionable changes found. Reply again with what you'd like to add, remove, or change._",
+      },
     });
   }
 
@@ -813,23 +1068,28 @@ function buildModReviewBlocks(mod, confirmedOrder) {
 
 function buildMenuContent(query) {
   const products = store.getProducts();
-  const q = (query || '').toLowerCase().trim();
+  const q = (query || "").toLowerCase().trim();
 
   const filtered = q
-    ? products.filter(p => (p.name || '').toLowerCase().includes(q))
+    ? products.filter((p) => (p.name || "").toLowerCase().includes(q))
     : products;
 
   if (filtered.length === 0) {
-    return [{
-      type: 'section',
-      text: { type: 'mrkdwn', text: `_No products found for "${trunc(query, 40)}"_` },
-    }];
+    return [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: `_No products found for "${trunc(query, 40)}"_`,
+        },
+      },
+    ];
   }
 
   // Group by category, preserving insertion order
   const byCategory = new Map();
   for (const p of filtered) {
-    const cat = (p.category || 'Products');
+    const cat = p.category || "Products";
     if (!byCategory.has(cat)) byCategory.set(cat, []);
     byCategory.get(cat).push(p);
   }
@@ -840,55 +1100,61 @@ function buildMenuContent(query) {
     if (blocks.length >= 93) break; // stay under 100-block modal limit
 
     blocks.push({
-      type: 'header',
-      text: { type: 'plain_text', text: trunc(category, 150) },
+      type: "header",
+      text: { type: "plain_text", text: trunc(category, 150) },
     });
 
     // Pack up to 10 products per section (renders as 5-row × 2-col grid in Slack)
     const CHUNK = 10;
     for (let i = 0; i < prods.length; i += CHUNK) {
       if (blocks.length >= 93) break;
-      const fields = prods.slice(i, i + CHUNK).map(p => {
+      const fields = prods.slice(i, i + CHUNK).map((p) => {
         const validSizes = (p.sizes || []).filter(Boolean);
-        const sizeText = validSizes.length > 0
-          ? validSizes.map(s => `${s.name}: *${fmt(s.price)}*`).join('  ·  ')
-          : '—';
-        return { type: 'mrkdwn', text: `*${trunc(p.name, 50)}*\n${sizeText}` };
+        const sizeText =
+          validSizes.length > 0
+            ? validSizes
+                .map((s) => `${s.name}: *${fmt(s.price)}*`)
+                .join("  ·  ")
+            : "—";
+        return { type: "mrkdwn", text: `*${trunc(p.name, 50)}*\n${sizeText}` };
       });
-      blocks.push({ type: 'section', fields });
+      blocks.push({ type: "section", fields });
     }
 
-    blocks.push({ type: 'divider' });
+    blocks.push({ type: "divider" });
   }
 
   return blocks;
 }
 
 function buildMenuModal(query) {
-  const q = query || '';
+  const q = query || "";
   return {
-    type: 'modal',
-    callback_id: 'menu_modal',
-    title: { type: 'plain_text', text: 'Gourmet Twist Menu' },
-    close: { type: 'plain_text', text: 'Close' },
+    type: "modal",
+    callback_id: "menu_modal",
+    title: { type: "plain_text", text: "Gourmet Twist Menu" },
+    close: { type: "plain_text", text: "Close" },
     blocks: [
       {
-        type: 'input',
-        block_id: 'menu_search_block',
+        type: "input",
+        block_id: "menu_search_block",
         dispatch_action: true,
         optional: true,
-        label: { type: 'plain_text', text: 'Search' },
+        label: { type: "plain_text", text: "Search" },
         element: {
-          type: 'plain_text_input',
-          action_id: 'menu_search_input',
-          placeholder: { type: 'plain_text', text: 'Filter products… e.g. "banana", "cake", "choc"' },
+          type: "plain_text_input",
+          action_id: "menu_search_input",
+          placeholder: {
+            type: "plain_text",
+            text: 'Filter products… e.g. "banana", "cake", "choc"',
+          },
           initial_value: q,
           dispatch_action_config: {
-            trigger_actions_on: ['on_character_entered'],
+            trigger_actions_on: ["on_character_entered"],
           },
         },
       },
-      { type: 'divider' },
+      { type: "divider" },
       ...buildMenuContent(q),
     ],
   };
@@ -898,22 +1164,25 @@ function buildMenuModal(query) {
 
 function buildCitiesModal() {
   return {
-    type: 'modal',
-    title: { type: 'plain_text', text: 'Delivery Zones' },
-    close: { type: 'plain_text', text: 'Close' },
+    type: "modal",
+    title: { type: "plain_text", text: "Delivery Zones" },
+    close: { type: "plain_text", text: "Close" },
     blocks: [
       {
-        type: 'section',
-        text: { type: 'mrkdwn', text: 'Search all delivery zones and fees.' },
+        type: "section",
+        text: { type: "mrkdwn", text: "Search all delivery zones and fees." },
       },
       {
-        type: 'actions',
-        block_id: 'cities_search',
+        type: "actions",
+        block_id: "cities_search",
         elements: [
           {
-            type: 'external_select',
-            action_id: 'cities_search_select',
-            placeholder: { type: 'plain_text', text: 'Type to search… e.g. "Lekki", "VI", "Chevron"' },
+            type: "external_select",
+            action_id: "cities_search_select",
+            placeholder: {
+              type: "plain_text",
+              text: 'Type to search… e.g. "Lekki", "VI", "Chevron"',
+            },
             min_query_length: 0,
           },
         ],
@@ -926,8 +1195,8 @@ function buildCitiesModal() {
 
 function summaryTotals(orders) {
   return {
-    grandTotal:    orders.reduce((s, o) => s + (o.orderTotal     || 0), 0),
-    itemsTotal:    orders.reduce((s, o) => s + (o.itemsSubtotal  || 0), 0),
+    grandTotal: orders.reduce((s, o) => s + (o.orderTotal || 0), 0),
+    itemsTotal: orders.reduce((s, o) => s + (o.itemsSubtotal || 0), 0),
     deliveryTotal: orders.reduce((s, o) => s + (o.fulfillment?.fee || 0), 0),
   };
 }
@@ -935,57 +1204,76 @@ function summaryTotals(orders) {
 // Shared per-order section blocks used by both the modal and the channel post.
 function buildOrderSections(orders, cap) {
   const blocks = [];
-  const shown  = orders.slice(0, cap);
+  const shown = orders.slice(0, cap);
 
   if (orders.length > cap) {
     blocks.push({
-      type: 'context',
-      elements: [{ type: 'mrkdwn', text: `_Showing most recent ${cap} of ${orders.length} orders._` }],
+      type: "context",
+      elements: [
+        {
+          type: "mrkdwn",
+          text: `_Showing most recent ${cap} of ${orders.length} orders._`,
+        },
+      ],
     });
   }
 
   for (const order of shown) {
-    const time = new Date(order._confirmedAt).toLocaleString('en-NG', {
-      timeZone: 'Africa/Lagos', hour: '2-digit', minute: '2-digit', hour12: true,
+    const time = new Date(order._confirmedAt).toLocaleString("en-NG", {
+      timeZone: "Africa/Lagos",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
     });
 
     const customerParts = [
       order.customer?.name,
       order.customer?.phone,
-      order.customer?.instagram ? `@${order.customer.instagram.replace(/^@/, '')}` : null,
+      order.customer?.instagram
+        ? `@${order.customer.instagram.replace(/^@/, "")}`
+        : null,
     ].filter(Boolean);
 
-    const recipientLine = (order.recipient?.name || order.recipient?.phone)
-      ? `📦 Recipient: ${[order.recipient.name, order.recipient.phone].filter(Boolean).join('  ·  ')}`
-      : null;
+    const recipientLine =
+      order.recipient?.name || order.recipient?.phone
+        ? `📦 Recipient: ${[order.recipient.name, order.recipient.phone].filter(Boolean).join("  ·  ")}`
+        : null;
 
-    const isPickup = order.fulfillment?.type === 'pickup';
+    const isPickup = order.fulfillment?.type === "pickup";
     const fulfillmentLine = isPickup
-      ? `📦 Pickup — ${order.fulfillment?.branch || 'Lekki'}  _(₦0)_`
-      : `🚚 ${order.fulfillment?.zoneName || order.fulfillment?.address || '—'}${order.fulfillment?.branch ? '  (' + order.fulfillment.branch + ')' : ''}  —  ${fmt(order.fulfillment?.fee)}`;
+      ? `📦 Pickup — ${order.fulfillment?.branch || "Lekki"}  _(₦0)_`
+      : `🚚 ${order.fulfillment?.zoneName || order.fulfillment?.address || "—"}${order.fulfillment?.branch ? "  (" + order.fulfillment.branch + ")" : ""}  —  ${fmt(order.fulfillment?.fee)}`;
 
-    const itemLines  = (order.items || []).map(i => `  ×${i.qty}  ${i.productName}  ·  _${i.sizeName}_  —  ${fmt(i.lineTotal)}`);
-    const notesLine  = order.notes?.length > 0 ? `📌 _${order.notes.join(' · ')}_` : null;
-    const orderNum   = order.orderNumber ? `\`${order.orderNumber}\`` : '_no order #_';
-    const totalLine  = `Subtotal: *${fmt(order.itemsSubtotal)}*   Delivery: *${fmt(order.fulfillment?.fee || 0)}*   *Total: ${fmt(order.orderTotal)}*`;
+    const itemLines = (order.items || []).map(
+      (i) =>
+        `  ×${i.qty}  ${i.productName}  ·  _${i.sizeName}_  —  ${fmt(i.lineTotal)}`,
+    );
+    const notesLine =
+      order.notes?.length > 0 ? `📌 _${order.notes.join(" · ")}_` : null;
+    const orderNum = order.orderNumber
+      ? `\`${order.orderNumber}\``
+      : "_no order #_";
+    const totalLine = `Subtotal: *${fmt(order.itemsSubtotal)}*   Delivery: *${fmt(order.fulfillment?.fee || 0)}*   *Total: ${fmt(order.orderTotal)}*`;
 
     const scheduledLine = order.scheduledDate
-      ? `📅 Scheduled: ${new Date(order.scheduledDate + 'T12:00:00').toLocaleDateString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short' })}`
+      ? `📅 Scheduled: ${new Date(order.scheduledDate + "T12:00:00").toLocaleDateString("en-NG", { timeZone: "Africa/Lagos", weekday: "short", day: "numeric", month: "short" })}`
       : null;
 
     const text = [
       `*${orderNum}*  ·  ${time}`,
-      `👤 ${customerParts.join('  ·  ') || '—'}`,
+      `👤 ${customerParts.join("  ·  ") || "—"}`,
       recipientLine,
       fulfillmentLine,
       scheduledLine,
       ...itemLines,
       notesLine,
       totalLine,
-    ].filter(Boolean).join('\n');
+    ]
+      .filter(Boolean)
+      .join("\n");
 
-    blocks.push({ type: 'section', text: { type: 'mrkdwn', text } });
-    blocks.push({ type: 'divider' });
+    blocks.push({ type: "section", text: { type: "mrkdwn", text } });
+    blocks.push({ type: "divider" });
   }
 
   return blocks;
@@ -994,43 +1282,53 @@ function buildOrderSections(orders, cap) {
 // ── /summary modal ────────────────────────────────────────────────────────────
 
 function buildSummaryModal(orders, dateLabel, channelId, userId, offsetDays) {
-  const meta = JSON.stringify({ channelId, userId, offsetDays: offsetDays || 0, dateLabel });
+  const meta = JSON.stringify({
+    channelId,
+    userId,
+    offsetDays: offsetDays || 0,
+    dateLabel,
+  });
 
   if (orders.length === 0) {
     return {
-      type: 'modal',
-      callback_id: 'summary_modal',
+      type: "modal",
+      callback_id: "summary_modal",
       private_metadata: meta,
-      title: { type: 'plain_text', text: 'Daily Summary' },
-      close: { type: 'plain_text', text: 'Close' },
-      blocks: [{
-        type: 'section',
-        text: { type: 'mrkdwn', text: `*No orders confirmed by you on ${dateLabel}.*\n_Confirm an order via /parse-order or by mentioning the bot._` },
-      }],
+      title: { type: "plain_text", text: "Daily Summary" },
+      close: { type: "plain_text", text: "Close" },
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `*No orders confirmed by you on ${dateLabel}.*\n_Confirm an order via /parse-order or by mentioning the bot._`,
+          },
+        },
+      ],
     };
   }
 
   const { grandTotal, itemsTotal, deliveryTotal } = summaryTotals(orders);
 
   return {
-    type: 'modal',
-    callback_id: 'summary_modal',
+    type: "modal",
+    callback_id: "summary_modal",
     private_metadata: meta,
-    title: { type: 'plain_text', text: 'Daily Summary' },
-    submit: { type: 'plain_text', text: 'Paste to channel' },
-    close:  { type: 'plain_text', text: 'Close' },
+    title: { type: "plain_text", text: "Daily Summary" },
+    submit: { type: "plain_text", text: "Paste to channel" },
+    close: { type: "plain_text", text: "Close" },
     blocks: [
       {
-        type: 'section',
+        type: "section",
         text: {
-          type: 'mrkdwn',
+          type: "mrkdwn",
           text: [
-            `📊 *${orders.length} order${orders.length !== 1 ? 's' : ''} confirmed — ${dateLabel}*`,
+            `📊 *${orders.length} order${orders.length !== 1 ? "s" : ""} confirmed — ${dateLabel}*`,
             `Items: *${fmt(itemsTotal)}*   Delivery: *${fmt(deliveryTotal)}*   Grand total: *${fmt(grandTotal)}*`,
-          ].join('\n'),
+          ].join("\n"),
         },
       },
-      { type: 'divider' },
+      { type: "divider" },
       ...buildOrderSections(orders, 45),
     ],
   };
@@ -1043,195 +1341,556 @@ function buildSummaryChannelBlocks(orders, dateLabel, userId) {
 
   return [
     {
-      type: 'section',
+      type: "section",
       text: {
-        type: 'mrkdwn',
+        type: "mrkdwn",
         text: [
           `📊 *Daily Summary — <@${userId}>*`,
           `_${dateLabel}_`,
-          `${orders.length} order${orders.length !== 1 ? 's' : ''}   Items: *${fmt(itemsTotal)}*   Delivery: *${fmt(deliveryTotal)}*   Grand total: *${fmt(grandTotal)}*`,
-        ].join('\n'),
+          `${orders.length} order${orders.length !== 1 ? "s" : ""}   Items: *${fmt(itemsTotal)}*   Delivery: *${fmt(deliveryTotal)}*   Grand total: *${fmt(grandTotal)}*`,
+        ].join("\n"),
       },
     },
-    { type: 'divider' },
+    { type: "divider" },
     ...buildOrderSections(orders, 20), // messages cap at 50 blocks; 2 + 2×20 = 42
   ];
 }
 
 // ── End-of-day channel summary ────────────────────────────────────────────────
 
-function buildEodSummaryBlocks(channelOrders, allOrders, dateLabel) {
-  const blocks = [];
-  const MAX_BLOCKS = 48; // Slack hard limit is 50; keep 2 in reserve
+// ── Operations reports (daily / weekly / monthly) ─────────────────────────────
 
-  // ── Cross-channel stats per user (from ALL orders today, all channels) ────
-  const crossChannel = {};
-  for (const o of allOrders) {
-    const u = o._confirmedBy;
-    if (!u) continue;
-    if (!crossChannel[u]) crossChannel[u] = { total: 0, revenue: 0 };
-    crossChannel[u].total++;
-    crossChannel[u].revenue += o.orderTotal || 0;
+const DEPT_DISPLAY = {
+  KITCHEN: "Kitchen",
+  BAKERY: "Bakery",
+  PACKINGBAKERY: "Packing",
+  BREAKFAST: "Breakfast",
+};
+
+// ── Shared helpers ────────────────────────────────────────────────────────────
+
+function _buildDeptText(k) {
+  const depts = Object.entries(k.departments || {}).filter(
+    ([, d]) => (d.totalScanned || 0) > 0,
+  );
+  if (depts.length === 0) return null;
+
+  const deptLines = depts.map(([key, d]) => {
+    const name = DEPT_DISPLAY[key] || key;
+    return [
+      `*${name}*`,
+      `• Avg Time: *${Math.round(d.avgTimeMinutes)} mins*`,
+      `• Orders On Time: *${d.onTime ?? 0}*`,
+      `• Orders Delayed: *${d.delayed ?? 0}*`,
+    ].join("\n");
+  });
+
+  const sorted = [...depts].sort(
+    (a, b) => a[1].avgTimeMinutes - b[1].avgTimeMinutes,
+  );
+  const fastest = DEPT_DISPLAY[sorted[0][0]] || sorted[0][0];
+  const slowest =
+    DEPT_DISPLAY[sorted[sorted.length - 1][0]] || sorted[sorted.length - 1][0];
+
+  return {
+    text: [
+      "*🏭  Department Performance*",
+      "",
+      deptLines.join("\n\n"),
+      "",
+      `🏆 *Fastest:* ${fastest}   🐢 *Slowest:* ${slowest}`,
+    ].join("\n"),
+    sorted,
+  };
+}
+
+function _buildCsrText(csrOrders) {
+  if (csrOrders.length === 0) return null;
+  const byUser = {};
+  for (const o of csrOrders) {
+    const u = o._confirmedBy || "unknown";
+    byUser[u] = (byUser[u] || 0) + 1;
+  }
+  const sorted = Object.entries(byUser).sort((a, b) => b[1] - a[1]);
+  const lines = sorted.map(([uid, cnt]) =>
+    uid === "unknown"
+      ? `Unknown — *${cnt}* orders`
+      : `<@${uid}> — *${cnt}* orders`,
+  );
+  const top = sorted[0];
+  const bottom = sorted[sorted.length - 1];
+  const footer = [
+    top ? `🏆 *Top Performer:* <@${top[0]}> (${top[1]})` : null,
+    bottom && bottom[0] !== top[0]
+      ? `📉 *Lowest Performer:* <@${bottom[0]}> (${bottom[1]})`
+      : null,
+  ].filter(Boolean);
+  return ["*👥  CSR Performance*", ...lines, "", ...footer]
+    .filter((s) => s !== "")
+    .join("\n");
+}
+
+function _buildAlertsText(k) {
+  const alerts = k.alerts || {};
+  const delayed = (k.orders || {}).delayed ?? 0;
+  const lines = [];
+
+  if (alerts.primaryDelayOrigin && delayed > 0) {
+    const origin =
+      DEPT_DISPLAY[alerts.primaryDelayOrigin] || alerts.primaryDelayOrigin;
+    lines.push(
+      `• *${delayed}* delayed order${delayed !== 1 ? "s" : ""} — primary origin: *${origin}*`,
+    );
+  }
+  if (alerts.longestDelayedOrder) {
+    const lo = alerts.longestDelayedOrder;
+    const dept = DEPT_DISPLAY[lo.delayOriginDept] || lo.delayOriginDept || "—";
+    lines.push(
+      `• Longest delay: *${lo.totalMinutes} mins*  (Order \`${lo.orderNumber}\`, origin: ${dept})`,
+    );
   }
 
-  // ── Channel totals ────────────────────────────────────────────────────────
-  const channelRevenue = channelOrders.reduce((s, o) => s + (o.orderTotal || 0), 0);
-  const channelCount   = channelOrders.length;
+  return lines.length > 0
+    ? ["*⚠️  Operational Alerts*", ...lines].join("\n")
+    : null;
+}
 
-  // ── Header ────────────────────────────────────────────────────────────────
+function _cmpIcon(diff, lowerIsBetter = false) {
+  if (diff === 0) return "🟰";
+  return (lowerIsBetter ? diff < 0 : diff > 0) ? "✅" : "❌";
+}
+
+function _cmpLine(icon, label, diff, currentValue, unit = "") {
+  const u = unit ? ` ${unit}` : "";
+  if (diff === 0) return `${icon} ${label}: ${currentValue}${u} (no change)`;
+  return `${icon} ${label}: ${diff > 0 ? "+" : ""}${diff}${u}`;
+}
+
+function _buildComparisonText(today, prev, label) {
+  if (!prev) return null;
+  const ko = (today || {}).orders || {};
+  const po = (prev || {}).orders || {};
+
+  const totalDiff = (ko.processed ?? 0) - (po.processed ?? 0);
+  const onTimeDiff = (ko.onTime ?? 0) - (po.onTime ?? 0);
+  const delayedDiff = (ko.delayed ?? 0) - (po.delayed ?? 0);
+  const avgNow = Math.round((today || {}).avgProcessingTimeMinutes ?? 0);
+  const avgDiff =
+    avgNow - Math.round((prev || {}).avgProcessingTimeMinutes ?? 0);
+
+  return [
+    `*📈  Comparison to ${label}*`,
+    _cmpLine(_cmpIcon(totalDiff), "Total Orders", totalDiff, ko.processed ?? 0),
+    _cmpLine(
+      _cmpIcon(onTimeDiff),
+      "Orders Completed On Time",
+      onTimeDiff,
+      ko.onTime ?? 0,
+    ),
+    _cmpLine(
+      _cmpIcon(avgDiff, true),
+      "Avg Processing Time",
+      avgDiff,
+      avgNow,
+      "mins",
+    ),
+    _cmpLine(
+      _cmpIcon(delayedDiff, true),
+      "Delayed Orders",
+      delayedDiff,
+      ko.delayed ?? 0,
+    ),
+  ].join("\n");
+}
+
+function _buildOtpPaymentsText(otpOrders) {
+  const lines = ["*💳  Unconfirmed Payments*"];
+  if (otpOrders.length === 0) {
+    lines.push("• None this week.");
+    return lines.join("\n");
+  }
+  for (const o of otpOrders) {
+    const orderNum = o.orderNumber || o.clientReference || "—";
+    const price = o.orderTotal
+      ? `₦${Number(o.orderTotal).toLocaleString("en-NG")}`
+      : "—";
+    const auth = o._otpAuthorizedBy ? `<@${o._otpAuthorizedBy}>` : "—";
+    lines.push(`• Order \`${orderNum}\` | ${price}\n  Authorised by: ${auth}`);
+  }
+  return lines.join("\n");
+}
+
+function _buildExecutiveSummaryText(k, prevData, periodName) {
+  const ko = (k || {}).orders || {};
+  const total = ko.processed ?? 0;
+  const bullets = [];
+
+  bullets.push(
+    `• *${total.toLocaleString()}* orders were processed during ${periodName}.`,
+  );
+
+  if (prevData) {
+    const avgNow = Math.round(k.avgProcessingTimeMinutes ?? 0);
+    const avgPrev = Math.round(prevData.avgProcessingTimeMinutes ?? 0);
+    const avgDiff = avgNow - avgPrev;
+    const avgPct =
+      avgPrev > 0 ? Math.abs(Math.round((avgDiff / avgPrev) * 100)) : null;
+    if (avgDiff < 0) {
+      bullets.push(
+        `• Average processing time *improved by ${Math.abs(avgDiff)} mins*${avgPct ? ` (${avgPct}%)` : ""} compared to last month.`,
+      );
+    } else if (avgDiff > 0) {
+      bullets.push(
+        `• Average processing time *increased by ${avgDiff} mins*${avgPct ? ` (${avgPct}%)` : ""} compared to last month.`,
+      );
+    }
+
+    const delayedNow = ko.delayed ?? 0;
+    const delayedPrev = (prevData.orders || {}).delayed ?? 0;
+    const delayedDiff = delayedNow - delayedPrev;
+    if (delayedDiff < 0 && delayedPrev > 0) {
+      const pct = Math.abs(Math.round((delayedDiff / delayedPrev) * 100));
+      bullets.push(
+        `• Delayed orders *reduced by ${pct}%* compared to last month.`,
+      );
+    }
+  }
+
+  const depts = Object.entries(k.departments || {}).filter(
+    ([, d]) => (d.totalScanned || 0) > 0,
+  );
+  if (depts.length > 0) {
+    const sorted = [...depts].sort(
+      (a, b) => a[1].avgTimeMinutes - b[1].avgTimeMinutes,
+    );
+    const fastestName = DEPT_DISPLAY[sorted[0][0]] || sorted[0][0];
+    bullets.push(
+      `• *${fastestName}* was the fastest department for the month.`,
+    );
+
+    const totalDelayed = depts.reduce((s, [, d]) => s + (d.delayed ?? 0), 0);
+    if (totalDelayed > 0) {
+      const mostDelayed = depts.reduce(
+        (a, b) => ((b[1].delayed ?? 0) > (a[1].delayed ?? 0) ? b : a),
+        depts[0],
+      );
+      const pct = Math.round(
+        ((mostDelayed[1].delayed ?? 0) / totalDelayed) * 100,
+      );
+      const name = DEPT_DISPLAY[mostDelayed[0]] || mostDelayed[0];
+      bullets.push(`• *${name}* contributed *${pct}%* of all delayed orders.`);
+    }
+  }
+
+  return bullets.join("\n");
+}
+
+const _footer = {
+  type: "context",
+  elements: [
+    { type: "mrkdwn", text: "_Powered by Gourmet Twist Operations Bot_" },
+  ],
+};
+
+// ── Daily Operations Report ───────────────────────────────────────────────────
+
+function buildDailyReportBlocks(
+  kitchenData,
+  yesterdayData,
+  csrOrders,
+  dateLabel,
+) {
+  const k = kitchenData || {};
+  const orders = k.orders || {};
+  const blocks = [];
+
   blocks.push({
-    type: 'section',
+    type: "header",
+    text: { type: "plain_text", text: "📊  Daily Operations Report" },
+  });
+  blocks.push({
+    type: "context",
+    elements: [{ type: "mrkdwn", text: `_${dateLabel}_` }],
+  });
+  blocks.push({ type: "divider" });
+
+  const total = orders.processed ?? 0;
+  const onTime = orders.onTime ?? 0;
+  const delayed = orders.delayed ?? 0;
+  const csrCount = csrOrders.length;
+  const pct = total > 0 ? ((onTime / total) * 100).toFixed(1) : "—";
+  const avgMins =
+    k.avgProcessingTimeMinutes != null
+      ? `${Math.round(k.avgProcessingTimeMinutes)} mins`
+      : "—";
+
+  blocks.push({
+    type: "section",
     text: {
-      type: 'mrkdwn',
+      type: "mrkdwn",
       text: [
-        `📊  *END-OF-DAY SUMMARY*`,
-        `_${dateLabel}_`,
-        `*${channelCount}* order${channelCount !== 1 ? 's' : ''} confirmed in this channel   ·   Grand total: *${fmt(channelRevenue)}*`,
-      ].join('\n'),
+        "*📦  Order Summary*",
+        `• Total Orders: *${total}*`,
+        `• Total Orders by CSRs: *${csrCount}*`,
+        `• Orders Completed On Time: *${onTime}*  (${pct}%)`,
+        `• Delayed Orders: *${delayed}*`,
+        `• Avg Processing Time: *${avgMins}*`,
+      ].join("\n"),
     },
   });
-  blocks.push({ type: 'divider' });
+  blocks.push({ type: "divider" });
 
-  // ── Group by confirmer, preserving chronological order of first order ─────
-  const byUser = new Map();
-  for (const o of channelOrders) {
-    const u = o._confirmedBy || 'unknown';
-    if (!byUser.has(u)) byUser.set(u, []);
-    byUser.get(u).push(o);
+  const deptResult = _buildDeptText(k);
+  if (deptResult) {
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: deptResult.text },
+    });
+    blocks.push({ type: "divider" });
   }
 
-  let blocksUsed = blocks.length;
+  const csrText = _buildCsrText(csrOrders);
+  if (csrText) {
+    blocks.push({ type: "section", text: { type: "mrkdwn", text: csrText } });
+    blocks.push({ type: "divider" });
+  }
 
-  for (const [userId, orders] of byUser) {
-    // Estimate blocks this user section needs: 1 header + N orders + 1 divider
-    const blocksNeeded = 1 + orders.length + 1;
-    const canFitAll    = blocksUsed + blocksNeeded <= MAX_BLOCKS - 1; // -1 for possible footer
-    const slotsLeft    = MAX_BLOCKS - 1 - blocksUsed - 2; // -2 for user header + divider
-    const ordersToShow = canFitAll ? orders : orders.slice(0, Math.max(0, slotsLeft));
-
-    if (ordersToShow.length === 0 && !canFitAll) {
-      // Out of space — add truncation footer and stop
-      blocks.push({
-        type: 'context',
-        elements: [{ type: 'mrkdwn', text: `_Summary truncated — use /summary for the full list._` }],
-      });
-      break;
-    }
-
-    // ── User section header ─────────────────────────────────────────────────
-    const userRevenue = orders.reduce((s, o) => s + (o.orderTotal || 0), 0);
-    const cc          = crossChannel[userId] || { total: 0, revenue: 0 };
-    const otherCount  = cc.total  - orders.length;
-    const otherRev    = cc.revenue - userRevenue;
-    const crossNote   = otherCount > 0
-      ? `  ·  _+${otherCount} order${otherCount !== 1 ? 's' : ''} in other channels (${fmt(otherRev)})_`
-      : '';
-
+  const alertsText = _buildAlertsText(k);
+  if (alertsText) {
     blocks.push({
-      type: 'section',
+      type: "section",
+      text: { type: "mrkdwn", text: alertsText },
+    });
+    blocks.push({ type: "divider" });
+  }
+
+  const cmpText = _buildComparisonText(kitchenData, yesterdayData, "Yesterday");
+  if (cmpText) {
+    blocks.push({ type: "section", text: { type: "mrkdwn", text: cmpText } });
+  }
+
+  blocks.push(_footer);
+  return blocks;
+}
+
+// ── Weekly Operations Report ──────────────────────────────────────────────────
+// otpOrders: from getOtpOverridesForPeriod — orders confirmed via OTP override
+
+function buildWeeklyReportBlocks(
+  kitchenData,
+  prevData,
+  csrOrders,
+  otpOrders,
+  periodLabel,
+) {
+  const k = kitchenData || {};
+  const orders = k.orders || {};
+  const blocks = [];
+
+  blocks.push({
+    type: "header",
+    text: { type: "plain_text", text: "📊  Weekly Operations Report" },
+  });
+  blocks.push({
+    type: "context",
+    elements: [{ type: "mrkdwn", text: `_${periodLabel}_` }],
+  });
+  blocks.push({ type: "divider" });
+
+  const total = orders.processed ?? 0;
+  const onTime = orders.onTime ?? 0;
+  const delayed = orders.delayed ?? 0;
+  const csrCount = csrOrders.length;
+  const otpCount = (otpOrders || []).length;
+  const avgMins =
+    k.avgProcessingTimeMinutes != null
+      ? `${Math.round(k.avgProcessingTimeMinutes)} mins`
+      : "—";
+
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: [
+        "*📦  Order Summary*",
+        `• Total Orders: *${total.toLocaleString()}*`,
+        `• Total Orders by CSRs: *${csrCount.toLocaleString()}*`,
+        `• Orders Completed On Time: *${onTime.toLocaleString()}*`,
+        `• Delayed Orders: *${delayed.toLocaleString()}*`,
+        `• Avg Processing Time: *${avgMins}*`,
+        `• Unconfirmed Payments: *${otpCount}*`,
+      ].join("\n"),
+    },
+  });
+  blocks.push({ type: "divider" });
+
+  const deptResult = _buildDeptText(k);
+  if (deptResult) {
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: deptResult.text },
+    });
+    blocks.push({ type: "divider" });
+  }
+
+  const csrText = _buildCsrText(csrOrders);
+  if (csrText) {
+    blocks.push({ type: "section", text: { type: "mrkdwn", text: csrText } });
+    blocks.push({ type: "divider" });
+  }
+
+  blocks.push({
+    type: "section",
+    text: { type: "mrkdwn", text: _buildOtpPaymentsText(otpOrders || []) },
+  });
+  blocks.push({ type: "divider" });
+
+  const alertsText = _buildAlertsText(k);
+  if (alertsText) {
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: alertsText },
+    });
+    blocks.push({ type: "divider" });
+  }
+
+  const cmpText = _buildComparisonText(kitchenData, prevData, "Last Week");
+  if (cmpText) {
+    blocks.push({ type: "section", text: { type: "mrkdwn", text: cmpText } });
+  }
+
+  blocks.push(_footer);
+  return blocks;
+}
+
+// ── Monthly Operations Report ─────────────────────────────────────────────────
+
+function buildMonthlyReportBlocks(
+  kitchenData,
+  prevData,
+  csrOrders,
+  periodLabel,
+) {
+  const k = kitchenData || {};
+  const orders = k.orders || {};
+  const blocks = [];
+
+  blocks.push({
+    type: "header",
+    text: { type: "plain_text", text: "📊  Monthly Operations Report" },
+  });
+  blocks.push({
+    type: "context",
+    elements: [{ type: "mrkdwn", text: `_${periodLabel}_` }],
+  });
+  blocks.push({ type: "divider" });
+
+  // Executive Summary — extract just the month name from periodLabel (first word)
+  const monthName = periodLabel.split(/[\s·,]+/)[0];
+  const execText = _buildExecutiveSummaryText(k, prevData, monthName);
+  if (execText) {
+    blocks.push({
+      type: "section",
       text: {
-        type: 'mrkdwn',
-        text: userId === 'unknown'
-          ? `*Unknown*  ·  ${orders.length} order${orders.length !== 1 ? 's' : ''}  ·  *${fmt(userRevenue)}*${crossNote}`
-          : `<@${userId}>  ·  ${orders.length} order${orders.length !== 1 ? 's' : ''} here  ·  *${fmt(userRevenue)}*${crossNote}`,
+        type: "mrkdwn",
+        text: ["*📌  Executive Summary*", execText].join("\n"),
       },
     });
-    blocksUsed++;
-
-    // ── Compact per-order lines ─────────────────────────────────────────────
-    for (const order of ordersToShow) {
-      const time = new Date(order._confirmedAt).toLocaleString('en-NG', {
-        timeZone: 'Africa/Lagos', hour: '2-digit', minute: '2-digit', hour12: true,
-      });
-      const customerLine = [
-        order.customer?.name,
-        order.customer?.phone,
-      ].filter(Boolean).join('  ·  ') || '—';
-
-      const isPickup     = order.fulfillment?.type === 'pickup';
-      const fulfillLine  = isPickup
-        ? `◉ Pickup — ${order.fulfillment?.branch || 'Lekki'}`
-        : `🚚 ${order.fulfillment?.zoneName || order.fulfillment?.address || '—'}`;
-
-      const recipientLine = (order.recipient?.name || order.recipient?.phone)
-        ? `  📦 ${[order.recipient.name, order.recipient.phone].filter(Boolean).join('  ·  ')}`
-        : '';
-
-      const scheduledLine = order.scheduledDate
-        ? `  📅 ${new Date(order.scheduledDate + 'T12:00:00').toLocaleDateString('en-NG', { timeZone: 'Africa/Lagos', weekday: 'short', day: 'numeric', month: 'short' })}`
-        : '';
-
-      const itemsLine = (order.items || [])
-        .map(i => `×${i.qty} ${trunc(i.productName, 30)} · _${i.sizeName}_`)
-        .join('   ');
-
-      const orderNumPart = order.orderNumber ? `  \`${order.orderNumber}\`` : '';
-      const refPart      = order.clientReference ? `  \`${order.clientReference}\`` : '';
-
-      blocks.push({
-        type: 'section',
-        text: {
-          type: 'mrkdwn',
-          text: [
-            `*${time}*  ·  ${customerLine}${recipientLine}${scheduledLine}`,
-            `${fulfillLine}  ·  *${fmt(order.orderTotal)}*${orderNumPart}${refPart}`,
-            itemsLine || '_no items_',
-          ].join('\n'),
-        },
-      });
-      blocksUsed++;
-    }
-
-    // Truncation note for this user if we couldn't show all their orders
-    if (!canFitAll && ordersToShow.length < orders.length) {
-      blocks.push({
-        type: 'context',
-        elements: [{ type: 'mrkdwn', text: `_…and ${orders.length - ordersToShow.length} more order${orders.length - ordersToShow.length !== 1 ? 's' : ''} — use /summary for the full list._` }],
-      });
-      blocksUsed++;
-    }
-
-    blocks.push({ type: 'divider' });
-    blocksUsed++;
+    blocks.push({ type: "divider" });
   }
 
+  const total = orders.processed ?? 0;
+  const onTime = orders.onTime ?? 0;
+  const delayed = orders.delayed ?? 0;
+  const csrCount = csrOrders.length;
+  const avgMins =
+    k.avgProcessingTimeMinutes != null
+      ? `${Math.round(k.avgProcessingTimeMinutes)} mins`
+      : "—";
+
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: [
+        "*📦  Order Summary*",
+        `• Total Orders: *${total.toLocaleString()}*`,
+        `• Total Orders by CSRs: *${csrCount.toLocaleString()}*`,
+        `• Orders Completed On Time: *${onTime.toLocaleString()}*`,
+        `• Delayed Orders: *${delayed.toLocaleString()}*`,
+        `• Avg Processing Time: *${avgMins}*`,
+      ].join("\n"),
+    },
+  });
+  blocks.push({ type: "divider" });
+
+  const deptResult = _buildDeptText(k);
+  if (deptResult) {
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: deptResult.text },
+    });
+    blocks.push({ type: "divider" });
+  }
+
+  const csrText = _buildCsrText(csrOrders);
+  if (csrText) {
+    blocks.push({ type: "section", text: { type: "mrkdwn", text: csrText } });
+    blocks.push({ type: "divider" });
+  }
+
+  const alertsText = _buildAlertsText(k);
+  if (alertsText) {
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: alertsText },
+    });
+    blocks.push({ type: "divider" });
+  }
+
+  const cmpText = _buildComparisonText(kitchenData, prevData, "Last Month");
+  if (cmpText) {
+    blocks.push({ type: "section", text: { type: "mrkdwn", text: cmpText } });
+  }
+
+  blocks.push(_footer);
   return blocks;
 }
 
 // ── Payment verification / OTP flow blocks ────────────────────────────────────
 
 function buildPaymentNotFoundBlocks(order) {
-  const customer  = order.customer?.name  || 'Unknown';
+  const customer = order.customer?.name || "Unknown";
   const recipient = order.recipient?.name || customer;
-  const amount    = fmt(order.orderTotal);
-  const ref       = order.clientReference || '—';
+  const amount = fmt(order.orderTotal);
+  const ref = order.clientReference || "—";
 
   return [
     {
-      type: 'section',
+      type: "section",
       text: {
-        type: 'mrkdwn',
+        type: "mrkdwn",
         text: [
           `❌  *No matching payment found*`,
           `Customer: *${customer}*  ·  Recipient: *${recipient}*  ·  Amount: *${amount}*`,
           `Ref: \`${ref}\``,
           `\nNo payment from the last 24 hours matches this order. You can request an override OTP from the operator to proceed without a matched payment.`,
-        ].join('\n'),
+        ].join("\n"),
       },
     },
     {
-      type: 'actions',
+      type: "actions",
       elements: [
         {
-          type: 'button',
-          text: { type: 'plain_text', text: '📲  Request Override OTP' },
-          action_id: 'request_otp',
-          style: 'primary',
+          type: "button",
+          text: { type: "plain_text", text: "📲  Request Override OTP" },
+          action_id: "request_otp",
+          style: "primary",
         },
         {
-          type: 'button',
-          text: { type: 'plain_text', text: 'Back to Review' },
-          action_id: 'back_to_review',
+          type: "button",
+          text: { type: "plain_text", text: "Back to Review" },
+          action_id: "back_to_review",
         },
       ],
     },
@@ -1239,37 +1898,37 @@ function buildPaymentNotFoundBlocks(order) {
 }
 
 function buildOtpPendingBlocks(order) {
-  const ref = order.clientReference || '—';
+  const ref = order.clientReference || "—";
   return [
     {
-      type: 'section',
+      type: "section",
       text: {
-        type: 'mrkdwn',
+        type: "mrkdwn",
         text: [
           `📲  *OTP sent to operator via WhatsApp*`,
           `Collect the 6-digit code from the designated operator and enter it below.`,
           `Ref: \`${ref}\`  ·  _OTP is valid for 30 minutes._`,
-        ].join('\n'),
+        ].join("\n"),
       },
     },
     {
-      type: 'actions',
+      type: "actions",
       elements: [
         {
-          type: 'button',
-          text: { type: 'plain_text', text: '🔐  Enter OTP' },
-          action_id: 'enter_otp',
-          style: 'primary',
+          type: "button",
+          text: { type: "plain_text", text: "🔐  Enter OTP" },
+          action_id: "enter_otp",
+          style: "primary",
         },
         {
-          type: 'button',
-          text: { type: 'plain_text', text: 'Resend OTP' },
-          action_id: 'request_otp',
+          type: "button",
+          text: { type: "plain_text", text: "Resend OTP" },
+          action_id: "request_otp",
         },
         {
-          type: 'button',
-          text: { type: 'plain_text', text: 'Back to Review' },
-          action_id: 'back_to_review',
+          type: "button",
+          text: { type: "plain_text", text: "Back to Review" },
+          action_id: "back_to_review",
         },
       ],
     },
@@ -1278,25 +1937,30 @@ function buildOtpPendingBlocks(order) {
 
 function buildPaymentNameModal(privateMetadata) {
   return {
-    type: 'modal',
-    callback_id: 'payment_name_submit',
+    type: "modal",
+    callback_id: "payment_name_submit",
     private_metadata: privateMetadata,
-    title: { type: 'plain_text', text: 'Payment Name' },
-    submit: { type: 'plain_text', text: 'Search Payment' },
-    close:  { type: 'plain_text', text: 'Cancel' },
+    title: { type: "plain_text", text: "Payment Name" },
+    submit: { type: "plain_text", text: "Search Payment" },
+    close: { type: "plain_text", text: "Cancel" },
     blocks: [
       {
-        type: 'context',
-        elements: [{ type: 'mrkdwn', text: 'Enter the name exactly as it appears on the payment transfer.' }],
+        type: "context",
+        elements: [
+          {
+            type: "mrkdwn",
+            text: "Enter the name exactly as it appears on the payment transfer.",
+          },
+        ],
       },
       {
-        type: 'input',
-        block_id: 'payment_name_block',
-        label: { type: 'plain_text', text: 'Name on payment' },
+        type: "input",
+        block_id: "payment_name_block",
+        label: { type: "plain_text", text: "Name on payment" },
         element: {
-          type: 'plain_text_input',
-          action_id: 'payment_name_input',
-          placeholder: { type: 'plain_text', text: 'e.g. Chukwuemeka Okafor' },
+          type: "plain_text_input",
+          action_id: "payment_name_input",
+          placeholder: { type: "plain_text", text: "e.g. Chukwuemeka Okafor" },
         },
       },
     ],
@@ -1305,41 +1969,45 @@ function buildPaymentNameModal(privateMetadata) {
 
 // notice: optional string shown at the top (e.g. "OTP resent." confirmation)
 function buildOtpModal(privateMetadata, opts = {}) {
-  const noticeText = opts.notice
-    || '📲  OTP sent to operator via WhatsApp. Collect the 6-digit code and enter it below.';
+  const noticeText =
+    opts.notice ||
+    "📲  OTP sent to operator via WhatsApp. Collect the 6-digit code and enter it below.";
 
   return {
-    type: 'modal',
-    callback_id: 'otp_verify_submit',
+    type: "modal",
+    callback_id: "otp_verify_submit",
     private_metadata: privateMetadata,
-    title: { type: 'plain_text', text: 'Override OTP' },
-    submit: { type: 'plain_text', text: 'Verify OTP' },
-    close:  { type: 'plain_text', text: 'Cancel' },
+    title: { type: "plain_text", text: "Override OTP" },
+    submit: { type: "plain_text", text: "Verify OTP" },
+    close: { type: "plain_text", text: "Cancel" },
     blocks: [
       {
-        type: 'context',
-        elements: [{ type: 'mrkdwn', text: noticeText }],
+        type: "context",
+        elements: [{ type: "mrkdwn", text: noticeText }],
       },
       {
-        type: 'input',
-        block_id: 'otp_block',
-        label: { type: 'plain_text', text: 'OTP Code' },
-        hint: { type: 'plain_text', text: 'Enter the 6-digit code sent to the operator.' },
+        type: "input",
+        block_id: "otp_block",
+        label: { type: "plain_text", text: "OTP Code" },
+        hint: {
+          type: "plain_text",
+          text: "Enter the 6-digit code sent to the operator.",
+        },
         element: {
-          type: 'plain_text_input',
-          action_id: 'otp_input',
-          placeholder: { type: 'plain_text', text: '123456' },
+          type: "plain_text_input",
+          action_id: "otp_input",
+          placeholder: { type: "plain_text", text: "123456" },
           max_length: 6,
           min_length: 6,
         },
       },
       {
-        type: 'actions',
+        type: "actions",
         elements: [
           {
-            type: 'button',
-            text: { type: 'plain_text', text: '🔄  Resend OTP' },
-            action_id: 'resend_otp_modal',
+            type: "button",
+            text: { type: "plain_text", text: "🔄  Resend OTP" },
+            action_id: "resend_otp_modal",
           },
         ],
       },
@@ -1362,7 +2030,9 @@ module.exports = {
   buildCitiesModal,
   buildSummaryModal,
   buildSummaryChannelBlocks,
-  buildEodSummaryBlocks,
+  buildDailyReportBlocks,
+  buildWeeklyReportBlocks,
+  buildMonthlyReportBlocks,
   buildPaymentNotFoundBlocks,
   buildOtpPendingBlocks,
   buildPaymentNameModal,
