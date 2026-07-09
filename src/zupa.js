@@ -177,10 +177,23 @@ async function verifyPayment(customerName, recipientName, amount) {
 }
 
 // Sends a 6-digit OTP to the operator's WhatsApp. Throws on error.
-async function requestOverrideOtp(clientReference) {
-  const { status, data } = await paymentFetch("payment/order/override-otp", {
-    clientReference,
-  });
+// order: optional { orderTotal, items: [{ productName, sizeName, qty, lineTotal }] }
+async function requestOverrideOtp(clientReference, order = {}) {
+  const body = { clientReference };
+
+  if (order.orderTotal != null) {
+    body.amount = order.orderTotal;
+  }
+
+  if (Array.isArray(order.items) && order.items.length > 0) {
+    body.items = order.items.map((i) => ({
+      name: `${i.productName} · ${i.sizeName}`,
+      quantity: i.qty,
+      price: i.lineTotal,
+    }));
+  }
+
+  const { status, data } = await paymentFetch("payment/order/override-otp", body);
   if (status === 200 && data.success) return true;
   throw new Error(data.message || `OTP request failed (HTTP ${status})`);
 }

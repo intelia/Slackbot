@@ -1873,7 +1873,7 @@ async function handleRequestOtp({ ack, body, client }) {
   if (!order) return;
 
   try {
-    await requestOverrideOtp(order.clientReference);
+    await requestOverrideOtp(order.clientReference, order);
   } catch (err) {
     await client.chat.postEphemeral({
       channel: channelId,
@@ -1903,7 +1903,7 @@ async function handleResendOtpModal({ ack, body, view, client }) {
     notice = "⚠️  Order not found — close this modal and re-parse the order.";
   } else {
     try {
-      await requestOverrideOtp(order.clientReference);
+      await requestOverrideOtp(order.clientReference, order);
       notice =
         "✅  *OTP resent.* Enter the new 6-digit code sent to the operator.";
     } catch (err) {
