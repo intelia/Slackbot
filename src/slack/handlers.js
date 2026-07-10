@@ -741,7 +741,10 @@ async function executePush(order, confirmedBy, channelId, ts, client) {
   // For mention-based orders, save under the thread root ts (the @mention ts)
   // so that thread replies can look it up via event.thread_ts.
   // For /parse-order, ts IS the root message, so slackRootTs is not set.
-  saveConfirmedOrder(channelId, order.slackRootTs || ts, order, confirmedBy);
+  saveConfirmedOrder(channelId, order.slackRootTs || ts, order, confirmedBy, {
+    otpOverride: order.otpOverride || false,
+    otpAuthorizedBy: order.otpAuthorizedBy || null,
+  });
   deleteOrder(channelId, ts);
 
   await client.chat.update({
@@ -2055,6 +2058,9 @@ async function handleOtpVerifySubmit({ ack, body, view, client }) {
   }
 
   await ack();
+  // Mark OTP override on the order so executePush can store it and the confirmation shows it
+  order.otpOverride = true;
+  order.otpAuthorizedBy = confirmedBy;
   // OTP verified — push to Zupa
   await executePush(order, confirmedBy, channelId, ts, client);
 }

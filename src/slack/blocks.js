@@ -566,6 +566,27 @@ function buildConfirmationBlocks(order, orderNumber, confirmedBy) {
     });
   }
 
+  // ── Payment verification line ─────────────────────────────────────────────
+  let paymentLine = null;
+  if (order.otpOverride) {
+    const auth = order.otpAuthorizedBy ? `<@${order.otpAuthorizedBy}>` : "operator";
+    paymentLine = `🔐  *Payment override (OTP)* — authorised by ${auth}`;
+  } else if (order.paymentStatus === "verified" && order.paymentData) {
+    const p = order.paymentData;
+    const parts = [];
+    if (p.payerName) parts.push(`Payer: *${p.payerName}*`);
+    if (p.transactionRef) parts.push(`Ref: \`${p.transactionRef}\``);
+    if (p.amount) parts.push(fmt(p.amount));
+    paymentLine = `✅  *Payment verified* — ${parts.join("  ·  ")}`;
+  }
+
+  if (paymentLine) {
+    blocks.push({
+      type: "context",
+      elements: [{ type: "mrkdwn", text: paymentLine }],
+    });
+  }
+
   return blocks;
 }
 
