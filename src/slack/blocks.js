@@ -1,6 +1,5 @@
 "use strict";
 
-const { rideHailTiers, namedZones, pickupRows } = require("../parser/matcher");
 const store = require("../data/store");
 
 function fmt(n) {
@@ -606,7 +605,8 @@ function buildDuplicateWarningBlocks(duplicate) {
 // ── Zone change modal ─────────────────────────────────────────────────────────
 
 function buildZonePickerModal(currentAddress, privateMetadata) {
-  const rideHailOptions = rideHailTiers.map((t) => ({
+  const cities = store.getCities();
+  const rideHailOptions = (cities.rideHailTiers || []).map((t) => ({
     text: {
       type: "plain_text",
       text: trunc(`${t.name} — ${fmt(t.price)}`, 75),
@@ -614,7 +614,7 @@ function buildZonePickerModal(currentAddress, privateMetadata) {
     value: t.id,
   }));
 
-  const pickupOptions = pickupRows.map((r) => ({
+  const pickupOptions = (cities.pickupRows || []).map((r) => ({
     text: { type: "plain_text", text: trunc(r.name, 75) },
     value: r.id,
   }));
@@ -642,22 +642,26 @@ function buildZonePickerModal(currentAddress, privateMetadata) {
           min_query_length: 0,
         },
       },
-      { type: "divider" },
-      {
-        type: "input",
-        block_id: "ride_hail_select",
-        label: {
-          type: "plain_text",
-          text: "Or select a ride-hail tier (Uber / Bolt)",
-        },
-        optional: true,
-        element: {
-          type: "static_select",
-          action_id: "ride_hail_input",
-          placeholder: { type: "plain_text", text: "Select tier…" },
-          options: rideHailOptions,
-        },
-      },
+      ...(rideHailOptions.length > 0
+        ? [
+            { type: "divider" },
+            {
+              type: "input",
+              block_id: "ride_hail_select",
+              label: {
+                type: "plain_text",
+                text: "Or select a ride-hail tier (Uber / Bolt)",
+              },
+              optional: true,
+              element: {
+                type: "static_select",
+                action_id: "ride_hail_input",
+                placeholder: { type: "plain_text", text: "Select tier…" },
+                options: rideHailOptions,
+              },
+            },
+          ]
+        : []),
       ...(pickupOptions.length > 0
         ? [
             { type: "divider" },

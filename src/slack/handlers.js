@@ -5,11 +5,9 @@ const {
   matchProduct,
   getZoneById,
   getProductIndex,
-  namedZones,
-  rideHailTiers,
-  pickupRows,
   normalize,
 } = require("../parser/matcher");
+const store = require("../data/store");
 const { reconcile } = require("../parser/reconciler");
 const {
   pushToZupa,
@@ -407,7 +405,7 @@ async function handleProductSearchOptions({ options, ack }) {
 
 async function handleZoneSearchOptions({ options, ack }) {
   const query = normalize(options.value || "").trim();
-  const nonSurge = namedZones.filter((z) => !z.isSurge);
+  const nonSurge = (store.getCities().namedZones || []).filter((z) => !z.isSurge);
 
   let results;
   if (query.length < 2) {
@@ -581,7 +579,7 @@ async function handleZonePickerSubmit({ ack, body, view, client }) {
       order.fulfillment.resolved = true;
     }
   } else if (rideHailId) {
-    const tier = rideHailTiers.find((t) => t.id === rideHailId);
+    const tier = (store.getCities().rideHailTiers || []).find((t) => t.id === rideHailId);
     if (tier) {
       order.fulfillment.type = "delivery";
       order.fulfillment.zoneId = tier.id;
@@ -591,7 +589,7 @@ async function handleZonePickerSubmit({ ack, body, view, client }) {
       order.fulfillment.resolved = true;
     }
   } else if (pickupId) {
-    const row = pickupRows.find((r) => r.id === pickupId);
+    const row = (store.getCities().pickupRows || []).find((r) => r.id === pickupId);
     if (row) {
       order.fulfillment.type = "pickup";
       order.fulfillment.zoneId = row.id;
@@ -1488,7 +1486,9 @@ async function handleCitiesCommand({ command, ack, client }) {
 
 async function handleCitiesSearchOptions({ options, ack }) {
   const query = normalize(options.value || "").trim();
-  const zones = namedZones.filter((z) => !z.isSurge);
+  const cities = store.getCities();
+  const zones = (cities.namedZones || []).filter((z) => !z.isSurge);
+  const rideHailTiers = cities.rideHailTiers || [];
   const allOptions = [...zones, ...rideHailTiers];
 
   let results;
