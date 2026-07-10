@@ -658,8 +658,12 @@ async function handleDatePickerSubmit({ ack, body, view, client }) {
 
 // Fire-and-forget: run payment verification in background, then re-render the review
 function verifyPaymentBackground(client, order, channelId, ts) {
-  const customerName = order.customer?.name || "";
-  const recipientName = order.recipient?.name || customerName;
+  // receiptName: name as it appears on the bank transfer — takes priority for payment matching.
+  // Zupa payload is unaffected; this is lookup-only.
+  const customerName = order.receiptName || order.customer?.name || "";
+  const recipientName = order.receiptName
+    ? (order.recipient?.name || order.customer?.name || customerName)
+    : (order.recipient?.name || customerName);
 
   verifyPayment(customerName, recipientName, order.orderTotal)
     .then((match) => {

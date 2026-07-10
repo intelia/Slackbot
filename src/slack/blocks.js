@@ -344,9 +344,12 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
   // Payment verification status (populated asynchronously after parse)
   {
     const ps = order.paymentStatus;
+    const receiptNameNote = order.receiptName
+      ? `  _(receipt name: *${order.receiptName}*)_`
+      : "";
     let paymentText;
     if (ps === "verifying") {
-      paymentText = "🔍  _Verifying payment…_";
+      paymentText = `🔍  _Verifying payment…_${receiptNameNote}`;
     } else if (ps === "verified") {
       const p = order.paymentData || {};
       const paid = p.amount ? fmt(p.amount) + "  ·  " : "";
@@ -354,7 +357,7 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
       paymentText = `✅  *Payment verified* — ${paid}${payer}Ref: \`${p.transactionRef || "—"}\``;
     } else if (ps === "not_found") {
       paymentText =
-        "⚠️  *No matching payment found* — use Refetch Payment or Request OTP below";
+        `⚠️  *No matching payment found* — use Refetch Payment or Request OTP below${receiptNameNote}`;
     } else if (ps === "error") {
       paymentText = `⚠️  *Payment check failed* — ${order.paymentError || "unknown error"}`;
     }

@@ -169,6 +169,7 @@ async function parse(rawMessage) {
     clientReference: generateOrderRef(),
     customer: seg.customer,
     recipient,
+    receiptName: seg.receiptName || null,
     fulfillment: updatedFulfillment,
     items,
     statedTotal: seg.statedTotal,
