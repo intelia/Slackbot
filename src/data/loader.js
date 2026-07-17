@@ -70,8 +70,8 @@ const PICKUP_RE = /\bgtfree\b|\bpick\s*up\b|\bpickup\b/i;
 const SURGE_RE = /\bsurge\b/i;
 
 function extractBranch(name) {
-  if (/\(mainland store\)/i.test(name)) return "Mainland";
-  if (/\(opebi store\)/i.test(name)) return "Opebi";
+  if (/\(mainland store\)/i.test(name) || /\bmainland\b/i.test(name)) return "Mainland";
+  if (/\(opebi store\)/i.test(name) || /\bopebi\b/i.test(name)) return "Opebi";
   return "Lekki";
 }
 

@@ -594,7 +594,10 @@ async function handleZonePickerSubmit({ ack, body, view, client }) {
       order.fulfillment.type = "pickup";
       order.fulfillment.zoneId = row.id;
       order.fulfillment.zoneName = row.name;
-      order.fulfillment.branch = row.branch;
+      // Derive branch from the row name directly — API may not set closestStore on pickup rows
+      order.fulfillment.branch = /opebi/i.test(row.name) ? "Opebi"
+        : /mainland/i.test(row.name) ? "Mainland"
+        : "Lekki";
       order.fulfillment.fee = 0;
       order.fulfillment.resolved = true;
     }

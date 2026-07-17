@@ -55,14 +55,13 @@ function reconcile(items, fulfillment, statedTotal) {
 
   const gap = statedTotal - itemsSubtotal;
 
-  // If delivery is already resolved and there's still a gap, flag mismatch
-  if (fulfillment.resolved && currentFee > 0) {
+  // If fulfillment is already resolved (pickup or explicit delivery fee), never override it.
+  // Any gap is simply a mismatch — don't try to infer a different zone or fee.
+  if (fulfillment.resolved) {
     return {
-      reconciliation: {
-        status: 'mismatch',
-        gap: statedTotal - computedTotal,
-        hypothesis: null,
-      },
+      reconciliation: computedTotal === statedTotal
+        ? { status: 'matched', gap: 0, hypothesis: null }
+        : { status: 'mismatch', gap: statedTotal - computedTotal, hypothesis: null },
       fulfillment,
       itemsSubtotal,
       orderTotal: computedTotal,
