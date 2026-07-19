@@ -177,9 +177,14 @@ async function verifyPayment(customerName, recipientName, amount) {
 }
 
 // Sends a 6-digit OTP to the operator's WhatsApp. Throws on error.
-// order: optional { orderTotal, items: [{ productName, sizeName, qty, lineTotal }] }
+// order: optional { customer, recipient, orderTotal, items: [{ productName, sizeName, qty, lineTotal }] }
 async function requestOverrideOtp(clientReference, order = {}) {
   const body = { clientReference };
+
+  const customerName = order.customer?.name || null;
+  const recipientName = order.recipient?.name || null;
+  if (customerName) body.customerName = customerName;
+  if (recipientName && recipientName !== customerName) body.recipientName = recipientName;
 
   if (order.orderTotal != null) {
     body.amount = order.orderTotal;
