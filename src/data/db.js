@@ -160,6 +160,10 @@ function deletePendingOrder(channelId, ts) {
   db.prepare('DELETE FROM pending_orders WHERE channel_ts = ?').run(`${channelId}:${ts}`);
 }
 
+function clearAllPendingOrders() {
+  db.prepare('DELETE FROM pending_orders').run();
+}
+
 function getAllPendingOrders() {
   return db.prepare('SELECT channel_ts, order_json FROM pending_orders ORDER BY updated_at ASC').all()
     .map(r => {
@@ -188,6 +192,6 @@ module.exports = {
   saveConfirmedOrder, getConfirmedOrder, updateConfirmedOrder,
   getDailySummary, getAllOrdersToday, getOrdersForPeriod, getOtpOverridesForPeriod,
   lagosWeekBounds, lagosMonthBounds, isLastDayOfLagosMonth,
-  savePendingOrder, deletePendingOrder, getAllPendingOrders,
+  savePendingOrder, deletePendingOrder, getAllPendingOrders, clearAllPendingOrders,
   getMetaValue, setMetaValue,
 };

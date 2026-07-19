@@ -33,6 +33,7 @@ const {
   savePendingOrder,
   deletePendingOrder,
   getAllPendingOrders,
+  clearAllPendingOrders,
 } = require("../data/db");
 const { parseModification } = require("../parser/mod-segmenter");
 const { forceRefresh } = require("../data/loader");
@@ -59,6 +60,14 @@ const {
   buildWeeklyReportBlocks,
   buildMonthlyReportBlocks,
 } = require("./blocks");
+
+// ── Ephemeral helper ──────────────────────────────────────────────────────────
+// Always posts in-thread when threadTs is provided so mobile users see it.
+function ephem(client, { channel, user, threadTs, text }) {
+  const payload = { channel, user, text };
+  if (threadTs) payload.thread_ts = threadTs;
+  return client.chat.postEphemeral(payload).catch(() => {});
+}
 
 // ── In-memory order state (backed by SQLite for restart recovery) ─────────────
 // Key: `${channelId}:${ts}` → DraftOrder
@@ -356,7 +365,7 @@ async function handleSearchProduct({ ack, body, action, client }) {
   const ts = body.container.message_ts;
   const itemIndex = parseInt(action.value, 10);
 
-  const privateMetadata = JSON.stringify({ channelId, ts });
+  const privateMetadata = JSON.stringify({ channelId, ts, threadTs: body.container.thread_ts || null });
   await client.views.open({
     trigger_id: body.trigger_id,
     view: buildProductSearchModal(itemIndex, privateMetadata),
@@ -457,7 +466,7 @@ async function handleProductSearchSubmit({ ack, body, view, client }) {
   await ack({ response_action: "clear" });
 
   const meta = JSON.parse(view.private_metadata || "{}");
-  const { channelId, ts, itemIndex } = meta;
+  const { channelId, ts, itemIndex, threadTs = null } = meta;
   const selectedSizeId =
     view.state.values.product_select.product_search_select.selected_option
       ?.value;
@@ -469,11 +478,7 @@ async function handleProductSearchSubmit({ ack, body, view, client }) {
       channelId,
       ts,
     });
-    await client.chat.postEphemeral({
-      channel: channelId,
-      user: body.user.id,
-      text: "⚠️ Order state was lost (the bot may have restarted). Please re-paste the order message to start again.",
-    });
+    await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: "⚠️ Order state was lost (the bot may have restarted). Please re-paste the order message to start again." });
     return;
   }
 
@@ -489,11 +494,7 @@ async function handleProductSearchSubmit({ ack, body, view, client }) {
     console.error("[product-search-submit] sizeId not found in product index", {
       selectedSizeId,
     });
-    await client.chat.postEphemeral({
-      channel: channelId,
-      user: body.user.id,
-      text: "⚠️ That product could not be matched in the current catalogue (the list may have just refreshed). Please open the search again and re-select.",
-    });
+    await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: "⚠️ That product could not be matched in the current catalogue (the list may have just refreshed). Please open the search again and re-select." });
     return;
   }
 
@@ -503,11 +504,7 @@ async function handleProductSearchSubmit({ ack, body, view, client }) {
       itemIndex,
       items: order.items.map((i) => i.index),
     });
-    await client.chat.postEphemeral({
-      channel: channelId,
-      user: body.user.id,
-      text: "⚠️ Could not locate that item in the order. Please try again.",
-    });
+    await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: "⚠️ Could not locate that item in the order. Please try again." });
     return;
   }
 
@@ -543,7 +540,7 @@ async function handleChangeZone({ ack, body, action, client }) {
     ? order.fulfillment.address || order.fulfillment.zoneName || ""
     : "";
 
-  const privateMetadata = JSON.stringify({ channelId, ts });
+  const privateMetadata = JSON.stringify({ channelId, ts, threadTs: body.container.thread_ts || null });
   await client.views.open({
     trigger_id: body.trigger_id,
     view: buildZonePickerModal(currentAddress, privateMetadata),
@@ -701,7 +698,7 @@ function verifyPaymentBackground(client, order, channelId, ts) {
     });
 }
 
-async function executePush(order, confirmedBy, channelId, ts, client) {
+async function executePush(order, confirmedBy, channelId, ts, client, threadTs = null) {
   await client.chat.update({
     channel: channelId,
     ts,
@@ -727,11 +724,7 @@ async function executePush(order, confirmedBy, channelId, ts, client) {
       text: "Review Order",
       blocks: buildReviewOrderBlocks(order),
     });
-    await client.chat.postEphemeral({
-      channel: channelId,
-      user: confirmedBy,
-      text: `❌ Zupa push failed: ${err.message}`,
-    });
+    await ephem(client, { channel: channelId, user: confirmedBy, threadTs, text: `❌ Zupa push failed: ${err.message}` });
     return;
   }
 
@@ -765,13 +758,10 @@ async function handleConfirmOrder({ ack, body, action, client }) {
 
   const channelId = body.container.channel_id;
   const ts = body.container.message_ts;
+  const threadTs = body.container.thread_ts || null;
   const order = getOrder(channelId, ts);
   if (!order) {
-    await client.chat.postEphemeral({
-      channel: channelId,
-      user: body.user.id,
-      text: "⚠️ Order state not found. The bot may have restarted. Please re-parse the order.",
-    });
+    await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: "⚠️ Order state not found. The bot may have restarted. Please re-parse the order." });
     return;
   }
 
@@ -784,11 +774,7 @@ async function handleConfirmOrder({ ack, body, action, client }) {
     if (unresolvedItems.length > 0)
       reasons.push(`${unresolvedItems.length} unresolved item(s)`);
     if (zoneUnresolved) reasons.push("delivery zone not set");
-    await client.chat.postEphemeral({
-      channel: channelId,
-      user: body.user.id,
-      text: `⚠️ Cannot confirm yet: ${reasons.join(", ")}. Please resolve these first.`,
-    });
+    await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: `⚠️ Cannot confirm yet: ${reasons.join(", ")}. Please resolve these first.` });
     return;
   }
 
@@ -799,7 +785,7 @@ async function handleConfirmOrder({ ack, body, action, client }) {
   const paymentStatus = order.paymentStatus;
 
   if (paymentStatus === "verified") {
-    await executePush(order, body.user.id, channelId, ts, client);
+    await executePush(order, body.user.id, channelId, ts, client, threadTs);
   } else if (paymentStatus === "not_found") {
     await client.chat.update({
       channel: channelId,
@@ -820,16 +806,12 @@ async function handleConfirmOrder({ ack, body, action, client }) {
       );
     } catch (err) {
       console.log(`error verifying payment ${err}`);
-      await client.chat.postEphemeral({
-        channel: channelId,
-        user: body.user.id,
-        text: `⚠️ Payment verification error: ${err.message}`,
-      });
+      await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: `⚠️ Payment verification error: ${err.message}` });
       return;
     }
 
     if (paymentMatch) {
-      await executePush(order, body.user.id, channelId, ts, client);
+      await executePush(order, body.user.id, channelId, ts, client, threadTs);
     } else {
       await client.chat.update({
         channel: channelId,
@@ -1281,6 +1263,7 @@ async function handleModAddSearchBtn({ ack, body, client }) {
       modMessageTs,
       idx,
       isUnresolved,
+      threadTs: body.container.thread_ts || null,
     }),
   });
 }
@@ -1291,7 +1274,7 @@ async function handleModAddSearchModalSubmit({ ack, body, view, client }) {
   await ack({ response_action: "clear" });
 
   const meta = JSON.parse(view.private_metadata || "{}");
-  const { channelId, modMessageTs, idx, isUnresolved } = meta;
+  const { channelId, modMessageTs, idx, isUnresolved, threadTs = null } = meta;
   const selectedSizeId =
     view.state.values.product_select.product_search_select.selected_option
       ?.value;
@@ -1299,11 +1282,7 @@ async function handleModAddSearchModalSubmit({ ack, body, view, client }) {
 
   const modState = modStateMap.get(stateKey(channelId, modMessageTs));
   if (!modState) {
-    await client.chat.postEphemeral({
-      channel: channelId,
-      user: body.user.id,
-      text: "⚠️ Modification state was lost (the bot may have restarted). Please re-send the modification request.",
-    });
+    await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: "⚠️ Modification state was lost (the bot may have restarted). Please re-send the modification request." });
     return;
   }
 
@@ -1318,11 +1297,7 @@ async function handleModAddSearchModalSubmit({ ack, body, view, client }) {
     }
   }
   if (!found) {
-    await client.chat.postEphemeral({
-      channel: channelId,
-      user: body.user.id,
-      text: "⚠️ That product could not be matched in the current catalogue. Please try searching again.",
-    });
+    await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: "⚠️ That product could not be matched in the current catalogue. Please try searching again." });
     return;
   }
 
@@ -1879,17 +1854,14 @@ async function handleRequestOtp({ ack, body, client }) {
 
   const channelId = body.container.channel_id;
   const ts = body.container.message_ts;
+  const threadTs = body.container.thread_ts || null;
   const order = getOrder(channelId, ts);
   if (!order) return;
 
   try {
     await requestOverrideOtp(order.clientReference, order);
   } catch (err) {
-    await client.chat.postEphemeral({
-      channel: channelId,
-      user: body.user.id,
-      text: `⚠️ Could not send OTP: ${err.message}`,
-    });
+    await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: `⚠️ Could not send OTP: ${err.message}` });
     return;
   }
 
@@ -1897,7 +1869,7 @@ async function handleRequestOtp({ ack, body, client }) {
   await client.views.open({
     trigger_id: body.trigger_id,
     view: buildOtpModal(
-      JSON.stringify({ channelId, ts, confirmedBy: body.user.id }),
+      JSON.stringify({ channelId, ts, confirmedBy: body.user.id, threadTs }),
     ),
   });
 }
@@ -1959,13 +1931,13 @@ async function handleTryPaymentName({ ack, body, client }) {
 
   await client.views.open({
     trigger_id: body.trigger_id,
-    view: buildPaymentNameModal(JSON.stringify({ channelId, ts })),
+    view: buildPaymentNameModal(JSON.stringify({ channelId, ts, threadTs: body.container.thread_ts || null })),
   });
 }
 
 async function handlePaymentNameSubmit({ ack, body, view, client }) {
   const meta = JSON.parse(view.private_metadata || "{}");
-  const { channelId, ts } = meta;
+  const { channelId, ts, threadTs = null } = meta;
   const paymentName = (
     view.state.values?.payment_name_block?.payment_name_input?.value || ""
   ).trim();
@@ -1987,11 +1959,7 @@ async function handlePaymentNameSubmit({ ack, body, view, client }) {
   try {
     match = await verifyPayment(paymentName, paymentName, order.orderTotal);
   } catch (err) {
-    await client.chat.postEphemeral({
-      channel: channelId,
-      user: body.user.id,
-      text: `⚠️ Payment check failed: ${err.message}`,
-    });
+    await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: `⚠️ Payment check failed: ${err.message}` });
     return;
   }
 
@@ -2000,11 +1968,7 @@ async function handlePaymentNameSubmit({ ack, body, view, client }) {
     order.paymentData = match;
   } else {
     order.paymentStatus = "not_found";
-    await client.chat.postEphemeral({
-      channel: channelId,
-      user: body.user.id,
-      text: `⚠️ No payment found for *"${paymentName}"* either. Try another name or request an OTP.`,
-    });
+    await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: `⚠️ No payment found for *"${paymentName}"* either. Try another name or request an OTP.` });
   }
 
   saveOrder(channelId, ts, order);
@@ -2027,13 +1991,13 @@ async function handleEnterOtp({ ack, body, client }) {
 
   await client.views.open({
     trigger_id: body.trigger_id,
-    view: buildOtpModal(JSON.stringify({ channelId, ts, confirmedBy })),
+    view: buildOtpModal(JSON.stringify({ channelId, ts, confirmedBy, threadTs: body.container.thread_ts || null })),
   });
 }
 
 async function handleOtpVerifySubmit({ ack, body, view, client }) {
   const meta = JSON.parse(view.private_metadata || "{}");
-  const { channelId, ts, confirmedBy } = meta;
+  const { channelId, ts, confirmedBy, threadTs = null } = meta;
   const otp = view.state.values?.otp_block?.otp_input?.value?.trim() || "";
   const order = getOrder(channelId, ts);
 
@@ -2065,7 +2029,7 @@ async function handleOtpVerifySubmit({ ack, body, view, client }) {
   order.otpOverride = true;
   order.otpAuthorizedBy = confirmedBy;
   // OTP verified — push to Zupa
-  await executePush(order, confirmedBy, channelId, ts, client);
+  await executePush(order, confirmedBy, channelId, ts, client, threadTs);
 }
 
 async function handleBackToReview({ ack, body, client }) {
@@ -2115,6 +2079,39 @@ async function restorePendingOrders(client) {
 
   console.log(`[restore] Done — ${restored} restored, ${failed} failed.`);
   return { restored, failed };
+}
+
+// ── EOD: expire unsubmitted pending orders ────────────────────────────────────
+
+async function clearExpiredPendingOrders(client) {
+  const rows = getAllPendingOrders();
+  if (rows.length === 0) return 0;
+
+  // Update each message in Slack so CSRs can see it was auto-expired
+  await Promise.allSettled(
+    rows.map(({ channelId, ts }) =>
+      client.chat.update({
+        channel: channelId,
+        ts,
+        text: '⏰ Order expired — not submitted by end of day.',
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '⏰  *Order expired* — not submitted by end of day. Re-parse the original message if still needed.',
+            },
+          },
+        ],
+      }).catch(() => {}) // ignore deleted/inaccessible messages
+    )
+  );
+
+  orderStateMap.clear();
+  clearAllPendingOrders();
+
+  console.log(`[eod] Cleared ${rows.length} expired pending order(s).`);
+  return rows.length;
 }
 
 module.exports = {
@@ -2169,4 +2166,5 @@ module.exports = {
   handleEnterOtp,
   handleOtpVerifySubmit,
   handleBackToReview,
+  clearExpiredPendingOrders,
 };

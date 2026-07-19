@@ -12,6 +12,7 @@ const {
   setMetaValue,
 } = require('../data/db');
 const { buildDailyReportBlocks, buildWeeklyReportBlocks, buildMonthlyReportBlocks } = require('./blocks');
+const { clearExpiredPendingOrders } = require('./handlers');
 const { fetchKitchenSummary } = require('../zupa');
 const { CURRENT_VERSION, getChangesSince } = require('../changelog');
 
@@ -197,6 +198,9 @@ async function postEodSummaries(client) {
     });
     console.log(`[eod] ✓ Daily posted to ${channelId}`);
   }));
+
+  const cleared = await clearExpiredPendingOrders(client);
+  if (cleared > 0) console.log(`[eod] Auto-cleared ${cleared} expired pending order(s).`);
 }
 
 // ── Weekly Operations Report ──────────────────────────────────────────────────
