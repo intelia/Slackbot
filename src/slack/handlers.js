@@ -1865,7 +1865,15 @@ async function handleRequestOtp({ ack, body, client }) {
     return;
   }
 
-  // Open OTP modal directly — no intermediate "OTP sent" screen
+  // Update message to OTP-pending state so mobile users can re-open the modal
+  // without resending (Enter OTP button re-opens; Resend OTP button explicitly resends)
+  await client.chat.update({
+    channel: channelId,
+    ts,
+    text: "OTP sent — awaiting entry",
+    blocks: buildOtpPendingBlocks(order),
+  }).catch(() => {});
+
   await client.views.open({
     trigger_id: body.trigger_id,
     view: buildOtpModal(
