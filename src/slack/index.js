@@ -30,6 +30,7 @@ function createApp() {
   app.view("parse_order_submit", handlers.handleParseOrderSubmit);
   app.view("product_search_submit", handlers.handleProductSearchSubmit);
   app.view("zone_picker_submit", handlers.handleZonePickerSubmit);
+  app.view("mod_city_picker_submit", handlers.handleModCityPickerSubmit);
   app.view("summary_modal", handlers.handleSummarySubmit);
 
   // ── External select options ─────────────────────────────────────────────────
@@ -40,6 +41,7 @@ function createApp() {
   // Mod review pickers reuse the same data sources
   app.options("mod_add_search", handlers.handleProductSearchOptions);
   app.options("mod_zone_select", handlers.handleZoneSearchOptions);
+  app.options("mod_zone_search_select", handlers.handleZoneSearchOptions);
 
   // ── Global error handler ────────────────────────────────────────────────────
   app.error(async (error) => {
@@ -92,6 +94,10 @@ function createApp() {
   app.action("mod_remove_pick", handlers.handleModRemovePick);
   app.action("mod_remove_unresolved_pick", handlers.handleModRemoveUnresolvedPick);
   app.action("mod_zone_select", handlers.handleModZoneSelect);
+  app.action("mod_city_picker_btn", handlers.handleModCityPickerBtn);
+  app.action("mod_try_payment_name", handlers.handleModTryPaymentName);
+  app.action("mod_request_otp", handlers.handleModRequestOtp);
+  app.action("mod_enter_otp", handlers.handleModEnterOtp);
 
   // Menu live filter (fires on each keystroke, updates modal via views.update)
   app.action("menu_search_input", handlers.handleMenuSearch);

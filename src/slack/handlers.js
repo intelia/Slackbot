@@ -47,6 +47,7 @@ const {
   buildDatePickerModal,
   buildProductSearchModal,
   buildModAddSearchModal,
+  buildModCityPickerModal,
   buildModReviewBlocks,
   buildPaymentNotFoundBlocks,
   buildOtpPendingBlocks,
@@ -972,30 +973,19 @@ async function handleThreadMessage({ event, client }) {
 
 // ── Mod confirm: apply the modification ──────────────────────────────────────
 
-async function handleModConfirm({ ack, body, client }) {
-  await ack();
+// ── Shared: push a confirmed-order modification to Zupa and update message ────
 
-  const channelId = body.container.channel_id;
-  const modMessageTs = body.container.message_ts;
+async function applyModification(client, channelId, modMessageTs, modifiedBy) {
   const modState = modStateMap.get(stateKey(channelId, modMessageTs));
   if (!modState) return;
 
   const { threadTs, confirmedOrder, mod } = modState;
-  const modifiedBy = body.user.id;
 
   await client.chat.update({
     channel: channelId,
     ts: modMessageTs,
     text: "Applying modification…",
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: ":hourglass_flowing_sand: *Applying modification…*",
-        },
-      },
-    ],
+    blocks: [{ type: "section", text: { type: "mrkdwn", text: ":hourglass_flowing_sand: *Applying modification…*" } }],
   });
 
   try {
@@ -1006,20 +996,8 @@ async function handleModConfirm({ ack, body, client }) {
       ts: modMessageTs,
       text: "Modification failed",
       blocks: [
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: `❌ *Modification failed:* ${err.message}`,
-          },
-        },
-        {
-          type: "section",
-          text: {
-            type: "mrkdwn",
-            text: "_Reply in this thread again to retry._",
-          },
-        },
+        { type: "section", text: { type: "mrkdwn", text: `❌ *Modification failed:* ${err.message}` } },
+        { type: "section", text: { type: "mrkdwn", text: "_Reply in this thread again to retry._" } },
       ],
     });
     return;
@@ -1027,15 +1005,13 @@ async function handleModConfirm({ ack, body, client }) {
 
   modStateMap.delete(stateKey(channelId, modMessageTs));
 
-  // Apply changes to the stored order so future modifications have accurate state
+  // Apply changes to stored order so future mods have accurate state
   if (mod.newName) confirmedOrder.customer.name = mod.newName;
   if (mod.newPhone) confirmedOrder.customer.phone = mod.newPhone;
   if (mod.addItems.length > 0) confirmedOrder.items.push(...mod.addItems);
   if (mod.removeItems.length > 0) {
     const removedIds = new Set(mod.removeItems.map((i) => i.sizeId));
-    confirmedOrder.items = confirmedOrder.items.filter(
-      (i) => !removedIds.has(i.sizeId),
-    );
+    confirmedOrder.items = confirmedOrder.items.filter((i) => !removedIds.has(i.sizeId));
   }
   if (mod.newZoneId) {
     confirmedOrder.fulfillment.zoneId = mod.newZoneId;
@@ -1052,32 +1028,19 @@ async function handleModConfirm({ ack, body, client }) {
 
   const nameLine = mod.newName ? `  👤  Name: ${mod.newName}` : null;
   const phoneLine = mod.newPhone ? `  📱  Phone: ${mod.newPhone}` : null;
-  const addedLines = mod.addItems.map(
-    (i) =>
-      `  ➕  ${i.productName} · ${i.sizeName} ×${i.qty} — ${fmt(i.lineTotal)}`,
-  );
-  const removedLines = mod.removeItems.map(
-    (i) => `  ➖  ${i.productName} · ${i.sizeName} ×${i.qty}`,
-  );
-  const addressLine = mod.newZoneId
-    ? `  📍  ${confirmedOrder.fulfillment.zoneName}`
+  const addedLines = mod.addItems.map((i) => `  ➕  ${i.productName} · ${i.sizeName} ×${i.qty} — ${fmt(i.lineTotal)}`);
+  const removedLines = mod.removeItems.map((i) => `  ➖  ${i.productName} · ${i.sizeName} ×${i.qty}`);
+  const addressLine = mod.newZoneId ? `  📍  ${confirmedOrder.fulfillment.zoneName}` : null;
+  const dateLine = mod.newScheduledDate ? `  📅  Delivery date: ${mod.newScheduledDate}` : null;
+  const recipientLine = mod.newRecipient && (mod.newRecipient.name || mod.newRecipient.phone)
+    ? `  📦  Recipient: ${[mod.newRecipient.name, mod.newRecipient.phone].filter(Boolean).join("  ·  ")}`
     : null;
-  const dateLine = mod.newScheduledDate
-    ? `  📅  Delivery date: ${mod.newScheduledDate}`
-    : null;
-  const recipientLine =
-    mod.newRecipient && (mod.newRecipient.name || mod.newRecipient.phone)
-      ? `  📦  Recipient: ${[mod.newRecipient.name, mod.newRecipient.phone].filter(Boolean).join("  ·  ")}`
+  const paymentLine = mod.otpOverride
+    ? `  🔐  Payment override (OTP)`
+    : mod.paymentData?.transactionRef
+      ? `  ✅  Payment verified — Ref: \`${mod.paymentData.transactionRef}\``
       : null;
-  const summary = [
-    nameLine,
-    phoneLine,
-    recipientLine,
-    ...addedLines,
-    ...removedLines,
-    addressLine,
-    dateLine,
-  ]
+  const summary = [nameLine, phoneLine, recipientLine, ...addedLines, ...removedLines, addressLine, dateLine, paymentLine]
     .filter(Boolean)
     .join("\n");
 
@@ -1085,16 +1048,81 @@ async function handleModConfirm({ ack, body, client }) {
     channel: channelId,
     ts: modMessageTs,
     text: "Modification applied",
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `✅ *Modification applied by <@${modifiedBy}>*\nOrder \`${confirmedOrder.orderNumber}\`\n${summary}`,
-        },
-      },
-    ],
+    blocks: [{
+      type: "section",
+      text: { type: "mrkdwn", text: `✅ *Modification applied by <@${modifiedBy}>*\nOrder \`${confirmedOrder.orderNumber}\`\n${summary}` },
+    }],
   });
+}
+
+// ── Compute net amount increase for a modification ────────────────────────────
+
+function computeModIncrease(mod, confirmedOrder) {
+  // Baseline: what the customer has already paid (never updated after mods).
+  const originalPayment = confirmedOrder.orderTotal || 0;
+
+  // Current confirmed items total (reflects all previous mods applied to items).
+  const currentItemsTotal = (confirmedOrder.items || []).reduce((s, i) => s + (i.lineTotal || 0), 0);
+
+  // Items being removed in this mod — use confirmed order's lineTotal for accuracy.
+  const removedSizeIds = new Set(mod.removeItems.map((i) => i.sizeId));
+  const removedTotal = (confirmedOrder.items || [])
+    .filter((i) => removedSizeIds.has(i.sizeId))
+    .reduce((s, i) => s + (i.lineTotal || 0), 0);
+
+  const addedTotal = mod.addItems.reduce((s, i) => s + (i.lineTotal || 0), 0);
+  const newFee = mod.newZoneId ? (mod.newFee || 0) : (confirmedOrder.fulfillment?.fee || 0);
+
+  const proposedTotal = currentItemsTotal - removedTotal + addedTotal + newFee;
+
+  // Only require payment for the amount above what was originally paid.
+  return Math.max(0, proposedTotal - originalPayment);
+}
+
+async function handleModConfirm({ ack, body, client }) {
+  await ack();
+
+  const channelId = body.container.channel_id;
+  const modMessageTs = body.container.message_ts;
+  const threadTs = body.container.thread_ts || null;
+  const modState = modStateMap.get(stateKey(channelId, modMessageTs));
+  if (!modState) return;
+
+  const { confirmedOrder, mod } = modState;
+  const modifiedBy = body.user.id;
+
+  const modIncrease = computeModIncrease(mod, confirmedOrder);
+
+  if (modIncrease > 0) {
+    const customerName = confirmedOrder.receiptName || confirmedOrder.customer?.name || "";
+    const recipientName = confirmedOrder.receiptName
+      ? (confirmedOrder.recipient?.name || confirmedOrder.customer?.name || customerName)
+      : (confirmedOrder.recipient?.name || customerName);
+
+    let paymentMatch;
+    try {
+      paymentMatch = await verifyPayment(customerName, recipientName, modIncrease);
+    } catch (err) {
+      await ephem(client, { channel: channelId, user: modifiedBy, threadTs, text: `⚠️ Payment verification error: ${err.message}` });
+      return;
+    }
+
+    if (!paymentMatch) {
+      mod.paymentStatus = "not_found";
+      mod.modIncrease = modIncrease;
+      await client.chat.update({
+        channel: channelId,
+        ts: modMessageTs,
+        text: "Order Modification — Payment Required",
+        blocks: buildModReviewBlocks(mod, confirmedOrder),
+      });
+      return;
+    }
+
+    mod.paymentData = paymentMatch;
+  }
+
+  await applyModification(client, channelId, modMessageTs, modifiedBy);
 }
 
 // ── Mod reject: cancel the pending modification ───────────────────────────────
@@ -1393,6 +1421,158 @@ async function handleModZoneSelect({ ack, body, client }) {
     ts: modMessageTs,
     text: "Order Modification",
     blocks: buildModReviewBlocks(modState.mod, modState.confirmedOrder),
+  });
+}
+
+// ── Mod: open city picker modal ───────────────────────────────────────────────
+
+async function handleModCityPickerBtn({ ack, body, client }) {
+  await ack();
+
+  const channelId = body.container.channel_id;
+  const modMessageTs = body.container.message_ts;
+
+  await client.views.open({
+    trigger_id: body.trigger_id,
+    view: buildModCityPickerModal(
+      JSON.stringify({ channelId, modMessageTs, threadTs: body.container.thread_ts || null }),
+    ),
+  });
+}
+
+// ── Mod: city picker submitted ────────────────────────────────────────────────
+
+async function handleModCityPickerSubmit({ ack, body, view, client }) {
+  await ack({ response_action: "clear" });
+
+  const meta = JSON.parse(view.private_metadata || "{}");
+  const { channelId, modMessageTs } = meta;
+  const modState = modStateMap.get(stateKey(channelId, modMessageTs));
+  if (!modState) return;
+
+  const namedZoneId = view.state.values.mod_named_zone_select?.mod_zone_search_select?.selected_option?.value;
+  const rideHailId  = view.state.values.mod_ride_hail_select?.mod_ride_hail_input?.selected_option?.value;
+  const pickupId    = view.state.values.mod_pickup_select?.mod_pickup_input?.selected_option?.value;
+
+  const cities = store.getCities();
+
+  if (namedZoneId) {
+    const zone = getZoneById(namedZoneId);
+    if (zone) {
+      modState.mod.newZoneId   = zone.id;
+      modState.mod.newZoneName = zone.name;
+      modState.mod.newBranch   = zone.branch;
+      modState.mod.newFee      = zone.price;
+      modState.mod.newAddress  = zone.name;
+    }
+  } else if (rideHailId) {
+    const tier = (cities.rideHailTiers || []).find((t) => t.id === rideHailId);
+    if (tier) {
+      modState.mod.newZoneId   = tier.id;
+      modState.mod.newZoneName = tier.name;
+      modState.mod.newBranch   = tier.branch;
+      modState.mod.newFee      = tier.price;
+      modState.mod.newAddress  = tier.name;
+    }
+  } else if (pickupId) {
+    const row = (cities.pickupRows || []).find((r) => r.id === pickupId);
+    if (row) {
+      modState.mod.newZoneId   = row.id;
+      modState.mod.newZoneName = row.name;
+      modState.mod.newBranch   = /opebi/i.test(row.name) ? "Opebi" : /mainland/i.test(row.name) ? "Mainland" : "Lekki";
+      modState.mod.newFee      = 0;
+      modState.mod.newAddress  = row.name;
+    }
+  } else {
+    return; // nothing selected
+  }
+
+  // Reset payment gate if fee changed — user must re-confirm
+  delete modState.mod.paymentStatus;
+  delete modState.mod.modIncrease;
+
+  await client.chat.update({
+    channel: channelId,
+    ts: modMessageTs,
+    text: "Order Modification",
+    blocks: buildModReviewBlocks(modState.mod, modState.confirmedOrder),
+  });
+}
+
+// ── Mod: payment gate — Try Different Name ────────────────────────────────────
+
+async function handleModTryPaymentName({ ack, body, client }) {
+  await ack();
+
+  const channelId   = body.container.channel_id;
+  const modMessageTs = body.container.message_ts;
+  const threadTs     = body.container.thread_ts || null;
+
+  await client.views.open({
+    trigger_id: body.trigger_id,
+    view: buildPaymentNameModal(
+      JSON.stringify({ context: "mod", channelId, modMessageTs, confirmedBy: body.user.id, threadTs }),
+    ),
+  });
+}
+
+// ── Mod: payment gate — Request / Resend OTP ──────────────────────────────────
+
+async function handleModRequestOtp({ ack, body, client }) {
+  await ack();
+
+  const channelId    = body.container.channel_id;
+  const modMessageTs = body.container.message_ts;
+  const threadTs     = body.container.thread_ts || null;
+  const modState     = modStateMap.get(stateKey(channelId, modMessageTs));
+  if (!modState) return;
+
+  const { confirmedOrder, mod } = modState;
+
+  // Pass a synthetic order so the WhatsApp message shows the top-up amount and added items
+  const otpOrder = {
+    customer:    confirmedOrder.customer,
+    recipient:   confirmedOrder.recipient,
+    orderTotal:  mod.modIncrease,
+    items:       mod.addItems,
+  };
+
+  try {
+    await requestOverrideOtp(confirmedOrder.clientReference, otpOrder);
+  } catch (err) {
+    await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: `⚠️ Could not send OTP: ${err.message}` });
+    return;
+  }
+
+  mod.paymentStatus = "otp_pending";
+  await client.chat.update({
+    channel: channelId,
+    ts: modMessageTs,
+    text: "Order Modification — OTP Pending",
+    blocks: buildModReviewBlocks(mod, confirmedOrder),
+  });
+
+  await client.views.open({
+    trigger_id: body.trigger_id,
+    view: buildOtpModal(
+      JSON.stringify({ context: "mod", channelId, modMessageTs, confirmedBy: body.user.id, threadTs }),
+    ),
+  });
+}
+
+// ── Mod: Enter OTP — reopen modal without resending (mobile fix) ──────────────
+
+async function handleModEnterOtp({ ack, body, client }) {
+  await ack();
+
+  const channelId    = body.container.channel_id;
+  const modMessageTs = body.container.message_ts;
+
+  await client.views.open({
+    trigger_id: body.trigger_id,
+    view: buildOtpModal(
+      JSON.stringify({ context: "mod", channelId, modMessageTs, confirmedBy: body.user.id, threadTs: body.container.thread_ts || null }),
+    ),
   });
 }
 
@@ -1945,11 +2125,40 @@ async function handleTryPaymentName({ ack, body, client }) {
 
 async function handlePaymentNameSubmit({ ack, body, view, client }) {
   const meta = JSON.parse(view.private_metadata || "{}");
-  const { channelId, ts, threadTs = null } = meta;
+  const { context, channelId, ts, modMessageTs, confirmedBy, threadTs = null } = meta;
   const paymentName = (
     view.state.values?.payment_name_block?.payment_name_input?.value || ""
   ).trim();
 
+  // ── Mod context ──────────────────────────────────────────────────────────────
+  if (context === "mod") {
+    const modState = modStateMap.get(stateKey(channelId, modMessageTs));
+    if (!modState) {
+      await ack({ response_action: "errors", errors: { payment_name_block: "Modification state not found — please retry." } });
+      return;
+    }
+    await ack();
+
+    const { confirmedOrder, mod } = modState;
+    let match;
+    try {
+      match = await verifyPayment(paymentName, paymentName, mod.modIncrease);
+    } catch (err) {
+      await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: `⚠️ Payment check failed: ${err.message}` });
+      return;
+    }
+
+    if (match) {
+      mod.paymentData = match;
+      delete mod.paymentStatus;
+      await applyModification(client, channelId, modMessageTs, confirmedBy || body.user.id);
+    } else {
+      await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: `⚠️ No payment found for *"${paymentName}"* either. Try another name or request an OTP.` });
+    }
+    return;
+  }
+
+  // ── Order context ─────────────────────────────────────────────────────────────
   const order = getOrder(channelId, ts);
   if (!order) {
     await ack({
@@ -2005,8 +2214,37 @@ async function handleEnterOtp({ ack, body, client }) {
 
 async function handleOtpVerifySubmit({ ack, body, view, client }) {
   const meta = JSON.parse(view.private_metadata || "{}");
-  const { channelId, ts, confirmedBy, threadTs = null } = meta;
+  const { context, channelId, ts, modMessageTs, confirmedBy, threadTs = null } = meta;
   const otp = view.state.values?.otp_block?.otp_input?.value?.trim() || "";
+
+  // ── Mod context ──────────────────────────────────────────────────────────────
+  if (context === "mod") {
+    const modState = modStateMap.get(stateKey(channelId, modMessageTs));
+    if (!modState) {
+      await ack({ response_action: "errors", errors: { otp_block: "Modification state not found — please retry." } });
+      return;
+    }
+
+    try {
+      await verifyOverrideOtp(modState.confirmedOrder.clientReference, otp);
+    } catch (err) {
+      const msg = err.message.includes("expired")
+        ? "OTP has expired. Close this modal and request a new one."
+        : err.message.includes("No OTP requested")
+          ? 'No OTP was requested. Use the "Request Override OTP" button first.'
+          : `Invalid OTP — ${err.message}`;
+      await ack({ response_action: "errors", errors: { otp_block: msg } });
+      return;
+    }
+
+    await ack();
+    modState.mod.otpOverride = true;
+    delete modState.mod.paymentStatus;
+    await applyModification(client, channelId, modMessageTs, confirmedBy || body.user.id);
+    return;
+  }
+
+  // ── Order context ─────────────────────────────────────────────────────────────
   const order = getOrder(channelId, ts);
 
   if (!order) {
@@ -2022,7 +2260,6 @@ async function handleOtpVerifySubmit({ ack, body, view, client }) {
   try {
     await verifyOverrideOtp(order.clientReference, otp);
   } catch (err) {
-    // Keep modal open and show error under the input field
     const msg = err.message.includes("expired")
       ? "OTP has expired. Close this modal and request a new one."
       : err.message.includes("No OTP requested")
@@ -2033,10 +2270,8 @@ async function handleOtpVerifySubmit({ ack, body, view, client }) {
   }
 
   await ack();
-  // Mark OTP override on the order so executePush can store it and the confirmation shows it
   order.otpOverride = true;
   order.otpAuthorizedBy = confirmedBy;
-  // OTP verified — push to Zupa
   await executePush(order, confirmedBy, channelId, ts, client, threadTs);
 }
 
@@ -2151,6 +2386,11 @@ module.exports = {
   handleModRemovePick,
   handleModRemoveUnresolvedPick,
   handleModZoneSelect,
+  handleModCityPickerBtn,
+  handleModCityPickerSubmit,
+  handleModTryPaymentName,
+  handleModRequestOtp,
+  handleModEnterOtp,
   handleVersionCommand,
   handleMenuCommand,
   handleMenuSearchOptions,

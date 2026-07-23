@@ -710,6 +710,76 @@ function buildZonePickerModal(currentAddress, privateMetadata) {
   };
 }
 
+// ── Mod: city picker modal (mirrors zone picker, mod-specific IDs) ────────────
+
+function buildModCityPickerModal(privateMetadata) {
+  const cities = store.getCities();
+  const rideHailOptions = (cities.rideHailTiers || []).map((t) => ({
+    text: { type: "plain_text", text: trunc(`${t.name} — ${fmt(t.price)}`, 75) },
+    value: t.id,
+  }));
+  const pickupOptions = (cities.pickupRows || []).map((r) => ({
+    text: { type: "plain_text", text: trunc(r.name, 75) },
+    value: r.id,
+  }));
+  return {
+    type: "modal",
+    callback_id: "mod_city_picker_submit",
+    private_metadata: privateMetadata,
+    title: { type: "plain_text", text: "Change Delivery City" },
+    submit: { type: "plain_text", text: "Apply" },
+    close: { type: "plain_text", text: "Cancel" },
+    blocks: [
+      {
+        type: "input",
+        block_id: "mod_named_zone_select",
+        label: { type: "plain_text", text: "Search delivery zone" },
+        optional: true,
+        element: {
+          type: "external_select",
+          action_id: "mod_zone_search_select",
+          placeholder: { type: "plain_text", text: 'Type to search… e.g. "Lekki", "VI", "Ikoyi"' },
+          min_query_length: 0,
+        },
+      },
+      ...(rideHailOptions.length > 0
+        ? [
+            { type: "divider" },
+            {
+              type: "input",
+              block_id: "mod_ride_hail_select",
+              label: { type: "plain_text", text: "Or select a ride-hail tier (Uber / Bolt)" },
+              optional: true,
+              element: {
+                type: "static_select",
+                action_id: "mod_ride_hail_input",
+                placeholder: { type: "plain_text", text: "Select tier…" },
+                options: rideHailOptions,
+              },
+            },
+          ]
+        : []),
+      ...(pickupOptions.length > 0
+        ? [
+            { type: "divider" },
+            {
+              type: "input",
+              block_id: "mod_pickup_select",
+              label: { type: "plain_text", text: "Or select a pickup location" },
+              optional: true,
+              element: {
+                type: "static_select",
+                action_id: "mod_pickup_input",
+                placeholder: { type: "plain_text", text: "Select pickup location…" },
+                options: pickupOptions,
+              },
+            },
+          ]
+        : []),
+    ],
+  };
+}
+
 // ── Product search modal (searchable external_select) ─────────────────────────
 
 function buildProductSearchModal(itemIndex, privateMetadata) {
@@ -1049,6 +1119,48 @@ function buildModReviewBlocks(mod, confirmedOrder) {
 
   blocks.push({ type: "divider" });
 
+  // ── Payment gate / OTP pending states ─────────────────────────────────────
+  if (mod.paymentStatus === "not_found") {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `💳  *Additional payment required: ${fmt(mod.modIncrease)}*\nNo matching payment found for this top-up amount. Verify the transfer or request an override.`,
+      },
+    });
+    blocks.push({
+      type: "actions",
+      block_id: "mod_actions",
+      elements: [
+        { type: "button", text: { type: "plain_text", text: "🔁  Try Different Name" }, action_id: "mod_try_payment_name" },
+        { type: "button", text: { type: "plain_text", text: "🔐  Request Override OTP" }, action_id: "mod_request_otp", style: "primary" },
+        { type: "button", text: { type: "plain_text", text: "Cancel" }, action_id: "mod_reject" },
+      ],
+    });
+    return blocks;
+  }
+
+  if (mod.paymentStatus === "otp_pending") {
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `📲  *OTP sent to operator via WhatsApp*\nCollect the 6-digit code and enter it below.\n_Additional amount: ${fmt(mod.modIncrease)}_`,
+      },
+    });
+    blocks.push({
+      type: "actions",
+      block_id: "mod_actions",
+      elements: [
+        { type: "button", text: { type: "plain_text", text: "🔐  Enter OTP" }, action_id: "mod_enter_otp", style: "primary" },
+        { type: "button", text: { type: "plain_text", text: "Resend OTP" }, action_id: "mod_request_otp" },
+        { type: "button", text: { type: "plain_text", text: "Cancel" }, action_id: "mod_reject" },
+      ],
+    });
+    return blocks;
+  }
+
+  // ── Normal state ──────────────────────────────────────────────────────────
   const canApply =
     mod.addItems.length > 0 ||
     mod.removeItems.length > 0 ||
@@ -1062,24 +1174,7 @@ function buildModReviewBlocks(mod, confirmedOrder) {
     mod.unresolvedAdditions.length > 0 ||
     (mod.newAddress && !mod.newZoneId);
 
-  if (hasAnyChange) {
-    const elements = [
-      {
-        type: "button",
-        text: { type: "plain_text", text: "Cancel" },
-        action_id: "mod_reject",
-      },
-    ];
-    if (canApply) {
-      elements.push({
-        type: "button",
-        text: { type: "plain_text", text: "Apply Modification" },
-        style: "primary",
-        action_id: "mod_confirm",
-      });
-    }
-    blocks.push({ type: "actions", block_id: "mod_actions", elements });
-  } else {
+  if (!hasAnyChange) {
     blocks.push({
       type: "section",
       text: {
@@ -1088,6 +1183,20 @@ function buildModReviewBlocks(mod, confirmedOrder) {
       },
     });
   }
+
+  const actionElements = [
+    { type: "button", text: { type: "plain_text", text: "Cancel" }, action_id: "mod_reject" },
+    { type: "button", text: { type: "plain_text", text: "🗺️ Change City" }, action_id: "mod_city_picker_btn" },
+  ];
+  if (canApply) {
+    actionElements.push({
+      type: "button",
+      text: { type: "plain_text", text: "Apply Modification" },
+      style: "primary",
+      action_id: "mod_confirm",
+    });
+  }
+  blocks.push({ type: "actions", block_id: "mod_actions", elements: actionElements });
 
   return blocks;
 }
@@ -2053,6 +2162,7 @@ module.exports = {
   buildDatePickerModal,
   buildProductSearchModal,
   buildModAddSearchModal,
+  buildModCityPickerModal,
   buildModReviewBlocks,
   buildMenuModal,
   buildCitiesModal,
