@@ -37,6 +37,7 @@ const {
 } = require("../data/db");
 const { parseModification } = require("../parser/mod-segmenter");
 const { forceRefresh } = require("../data/loader");
+const SystemProducts = require("../../systemProducts");
 const {
   fmt,
   trunc,
@@ -60,6 +61,8 @@ const {
   buildDailyReportBlocks,
   buildWeeklyReportBlocks,
   buildMonthlyReportBlocks,
+  buildAvailabilityModal,
+  applyAvailabilityFilter,
 } = require("./blocks");
 
 // ── Ephemeral helper ──────────────────────────────────────────────────────────
@@ -68,6 +71,19 @@ function ephem(client, { channel, user, threadTs, text }) {
   const payload = { channel, user, text };
   if (threadTs) payload.thread_ts = threadTs;
   return client.chat.postEphemeral(payload).catch(() => {});
+}
+
+// ── Availability cache (short-lived — inventory changes in real time) ─────────
+let _availCache = null;
+let _availCacheAt = 0;
+const AVAIL_CACHE_TTL = 2 * 60 * 1000; // 2 minutes
+
+async function _fetchAvailability() {
+  const now = Date.now();
+  if (_availCache && now - _availCacheAt < AVAIL_CACHE_TTL) return _availCache;
+  _availCache = await SystemProducts.fetchProductsWithAvailability();
+  _availCacheAt = now;
+  return _availCache;
 }
 
 // ── In-memory order state (backed by SQLite for restart recovery) ─────────────
@@ -1992,6 +2008,193 @@ async function handleMonthlySummaryCommand({ command, ack, client }) {
 
 // ── /refresh-products ────────────────────────────────────────────────────────
 
+// ── /availability command ─────────────────────────────────────────────────────
+
+function _formatProductForCopy(product) {
+  const lines = (product.sizes || [])
+    .filter(Boolean)
+    .map((s) => {
+      const branches = Object.values(s.availableQuantity || {});
+      const qty =
+        branches.length === 0
+          ? "—"
+          : branches.map((b) => `${b.branchName}: ${b.quantity}`).join(" · ");
+      return `• ${s.name} (${fmt(s.price)}): ${qty}`;
+    })
+    .join("\n");
+  return `*${product.name}*\n${lines}`;
+}
+
+// Splits a long string into chunks of maxLen at natural newline boundaries.
+function _splitIntoSections(text, maxLen = 2900) {
+  const lines = text.split("\n");
+  const sections = [];
+  let current = "";
+  for (const line of lines) {
+    const next = current ? `${current}\n${line}` : line;
+    if (next.length > maxLen) {
+      if (current) sections.push(current);
+      current = line;
+    } else {
+      current = next;
+    }
+  }
+  if (current) sections.push(current);
+  return sections;
+}
+
+// Posts a dismissible ephemeral — user clicks "✕ Dismiss" and it deletes itself
+// via the response_url that Slack injects into the action payload.
+async function _postDismissibleEphemeral(client, channelId, userId, sections) {
+  const contentBlocks = sections.map((text) => ({
+    type: "section",
+    text: { type: "mrkdwn", text },
+  }));
+  contentBlocks.push({
+    type: "actions",
+    elements: [
+      {
+        type: "button",
+        text: { type: "plain_text", text: "✕  Dismiss" },
+        action_id: "avail_dismiss_copy",
+        style: "danger",
+      },
+    ],
+  });
+  await client.chat.postEphemeral({
+    channel: channelId,
+    user: userId,
+    text: "Availability data",
+    blocks: contentBlocks,
+  }).catch(() => {});
+}
+
+async function handleAvailabilityCommand({ command, ack, client }) {
+  await ack();
+  try {
+    const products = await _fetchAvailability();
+    const meta = JSON.stringify({
+      channelId: command.channel_id,
+      userId: command.user_id,
+      query: "",
+    });
+    await client.views.open({
+      trigger_id: command.trigger_id,
+      view: buildAvailabilityModal(products, "", meta),
+    });
+  } catch (err) {
+    console.error("[availability] Failed to fetch:", err.message);
+    await client.chat.postEphemeral({
+      channel: command.channel_id,
+      user: command.user_id,
+      text: "⚠️ Failed to load availability data. Please try again shortly.",
+    });
+  }
+}
+
+async function handleAvailabilitySearch({ ack, body, action, client }) {
+  await ack();
+  const query = action.value || "";
+  let meta;
+  try {
+    meta = JSON.parse(body.view?.private_metadata || "{}");
+  } catch {
+    meta = {};
+  }
+  meta.query = query;
+  try {
+    const products = await _fetchAvailability();
+    await client.views.update({
+      view_id: body.view.id,
+      view: buildAvailabilityModal(products, query, JSON.stringify(meta)),
+    });
+  } catch (err) {
+    console.error("[availability] Search update failed:", err.message);
+  }
+}
+
+async function handleAvailabilityCopyProduct({ ack, body, client }) {
+  await ack();
+  const productName = body.actions?.[0]?.value;
+  let meta;
+  try {
+    meta = JSON.parse(body.view?.private_metadata || "{}");
+  } catch {
+    meta = {};
+  }
+  const { channelId, userId } = meta;
+  if (!channelId || !userId || !productName) return;
+
+  const products = await _fetchAvailability().catch(() => null);
+  if (!products) return;
+  const product = products.find((p) => p.name === productName);
+  if (!product) return;
+
+  const text = _formatProductForCopy(product);
+  await _postDismissibleEphemeral(client, channelId, userId, [text]);
+}
+
+async function handleAvailabilityCopyAll({ ack, body, client }) {
+  await ack();
+  let meta;
+  try {
+    meta = JSON.parse(body.view?.private_metadata || "{}");
+  } catch {
+    meta = {};
+  }
+  const { channelId, userId, query } = meta;
+  if (!channelId || !userId) return;
+
+  const rawProducts = await _fetchAvailability().catch(() => null);
+  if (!rawProducts) return;
+
+  const filtered = applyAvailabilityFilter(rawProducts, query || "");
+  if (filtered.length === 0) {
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: userId,
+      text: "_No available products to copy._",
+    }).catch(() => {});
+    return;
+  }
+
+  // Group by category, format as plain text
+  const byCategory = new Map();
+  for (const p of filtered) {
+    const cat = p.category || "Products";
+    if (!byCategory.has(cat)) byCategory.set(cat, []);
+    byCategory.get(cat).push(p);
+  }
+
+  let fullText = "";
+  for (const [cat, prods] of byCategory) {
+    fullText += `*── ${cat} ──*\n`;
+    for (const p of prods) {
+      fullText += `${_formatProductForCopy(p)}\n\n`;
+    }
+  }
+
+  const sections = _splitIntoSections(fullText.trim());
+  // Stay under 50-block message limit: max 47 content sections + 1 actions block
+  const capped = sections.slice(0, 47);
+  if (sections.length > 47) {
+    capped[capped.length - 1] += "\n\n_…list truncated_";
+  }
+
+  await _postDismissibleEphemeral(client, channelId, userId, capped);
+}
+
+async function handleAvailabilityDismiss({ ack, body }) {
+  await ack();
+  const responseUrl = body.response_url;
+  if (!responseUrl) return;
+  await fetch(responseUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ delete_original: true }),
+  }).catch(() => {});
+}
+
 async function handleRefreshProductsCommand({ command, ack, respond }) {
   await ack();
   try {
@@ -2404,6 +2607,11 @@ module.exports = {
   handleDailySummaryCommand,
   handleWeeklySummaryCommand,
   handleMonthlySummaryCommand,
+  handleAvailabilityCommand,
+  handleAvailabilitySearch,
+  handleAvailabilityCopyProduct,
+  handleAvailabilityCopyAll,
+  handleAvailabilityDismiss,
   handleRefreshProductsCommand,
   restorePendingOrders,
   handleRequestOtp,

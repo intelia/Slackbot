@@ -76,6 +76,33 @@ class SystemProducts {
     }
   }
 
+  static async fetchProductsWithAvailability() {
+    const endpoint =
+      "customer-requests/stores/8a7a28dc-b54d-4841-b949-efe60dbae709/products";
+    const res = await this.makeRequest({
+      endpoint,
+      query: { includeSpecial: true },
+    });
+    if (!res) throw new Error("No response from makeRequest");
+    return (res?.data || []).flatMap((sysp) => {
+      const category = (sysp.name || "").trim() || "Other";
+      return (sysp.products || []).map((prod) => ({
+        name: prod.name,
+        category,
+        sizes: Object.keys(prod.sizes || {}).map((s) => {
+          const skus = prod.sizes[s];
+          if (!skus || skus.length === 0) return null;
+          const sku = skus[0];
+          return {
+            name: s?.trim(),
+            price: sku.unitPrice,
+            availableQuantity: sku.availableQuantity || {},
+          };
+        }).filter(Boolean),
+      }));
+    });
+  }
+
   static async createOrder(payload) {
     try {
       const endpoint = "customer-requests/stores/slack-bot/order/new";

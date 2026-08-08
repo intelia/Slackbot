@@ -2152,6 +2152,140 @@ function buildOtpModal(privateMetadata, opts = {}) {
   };
 }
 
+// ── /availability modal ────────────────────────────────────────────────────────
+
+function _formatAvailQty(size) {
+  const branches = Object.values(size.availableQuantity || {});
+  if (branches.length === 0) return "—";
+  return branches.map((b) => `${b.branchName}: ${b.quantity}`).join("  ·  ");
+}
+
+// Shared filter: (1) only products with at least 1 unit available somewhere,
+// (2) search by category, product name, or size name.
+// Size-only match narrows displayed sizes to the matching ones.
+function applyAvailabilityFilter(products, query) {
+  const available = products.filter((p) =>
+    (p.sizes || []).some((s) =>
+      Object.values(s.availableQuantity || {}).some((b) => b.quantity > 0),
+    ),
+  );
+  if (!query) return available;
+  const q = query.toLowerCase().trim();
+  return available.flatMap((p) => {
+    const nameMatch = (p.name || "").toLowerCase().includes(q);
+    const catMatch = (p.category || "").toLowerCase().includes(q);
+    const matchingSizes = (p.sizes || []).filter((s) =>
+      (s.name || "").toLowerCase().includes(q),
+    );
+    if (!nameMatch && !catMatch && !matchingSizes.length) return [];
+    return [{ ...p, sizes: nameMatch || catMatch ? p.sizes : matchingSizes }];
+  });
+}
+
+function buildAvailabilityContent(products, query) {
+  const filtered = applyAvailabilityFilter(products, query);
+
+  if (filtered.length === 0) {
+    return [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: query
+            ? `_No available products found for "${trunc(query, 40)}"_`
+            : "_No products with available stock._",
+        },
+      },
+    ];
+  }
+
+  const byCategory = new Map();
+  for (const p of filtered) {
+    const cat = p.category || "Products";
+    if (!byCategory.has(cat)) byCategory.set(cat, []);
+    byCategory.get(cat).push(p);
+  }
+
+  const blocks = [];
+  for (const [category, prods] of byCategory) {
+    if (blocks.length >= 92) break;
+    blocks.push({
+      type: "header",
+      text: { type: "plain_text", text: trunc(category, 150) },
+    });
+
+    for (const p of prods) {
+      if (blocks.length >= 92) break;
+      const validSizes = (p.sizes || []).filter(Boolean);
+      if (validSizes.length === 0) continue;
+
+      const sizeLines = validSizes
+        .map((s) => `• *${s.name}* (${fmt(s.price)}):  ${_formatAvailQty(s)}`)
+        .join("\n");
+
+      blocks.push({
+        type: "section",
+        text: { type: "mrkdwn", text: `*${trunc(p.name, 50)}*\n${sizeLines}` },
+        accessory: {
+          type: "button",
+          text: { type: "plain_text", text: "📋" },
+          action_id: "avail_copy_product",
+          value: trunc(p.name, 255),
+        },
+      });
+    }
+
+    blocks.push({ type: "divider" });
+  }
+
+  return blocks;
+}
+
+function buildAvailabilityModal(products, query, privateMetadata) {
+  const q = query || "";
+  return {
+    type: "modal",
+    callback_id: "availability_modal",
+    private_metadata: privateMetadata || "{}",
+    title: { type: "plain_text", text: "Product Availability" },
+    close: { type: "plain_text", text: "Close" },
+    blocks: [
+      {
+        type: "input",
+        block_id: "avail_search_block",
+        dispatch_action: true,
+        optional: true,
+        label: { type: "plain_text", text: "Search products" },
+        element: {
+          type: "plain_text_input",
+          action_id: "availability_search_input",
+          placeholder: {
+            type: "plain_text",
+            text: 'Filter by name, category, or size — e.g. "cake", "midi"',
+          },
+          initial_value: q,
+          dispatch_action_config: {
+            trigger_actions_on: ["on_character_entered"],
+          },
+        },
+      },
+      {
+        type: "actions",
+        block_id: "avail_copy_all_block",
+        elements: [
+          {
+            type: "button",
+            text: { type: "plain_text", text: "📋 Copy List" },
+            action_id: "avail_copy_all",
+          },
+        ],
+      },
+      { type: "divider" },
+      ...buildAvailabilityContent(products, q),
+    ],
+  };
+}
+
 module.exports = {
   fmt,
   trunc,
@@ -2175,4 +2309,6 @@ module.exports = {
   buildOtpPendingBlocks,
   buildPaymentNameModal,
   buildOtpModal,
+  buildAvailabilityModal,
+  applyAvailabilityFilter,
 };

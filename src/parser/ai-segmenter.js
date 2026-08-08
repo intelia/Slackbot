@@ -1,20 +1,20 @@
-'use strict';
+"use strict";
 
-const { OpenAI } = require('openai');
-const { segment: ruleSegment } = require('./segmenter');
-const store = require('../data/store');
+const { OpenAI } = require("openai");
+const { segment: ruleSegment } = require("./segmenter");
+const store = require("../data/store");
 
 let _client = null;
 
 function getClient() {
   if (!_client) {
-    if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set');
+    if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY not set");
     _client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   }
   return _client;
 }
 
-const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
+const MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
 const BASE_SYSTEM_PROMPT = `You are an order extraction assistant for Gourmet Twist, a bakery in Lagos, Nigeria.
 
@@ -44,79 +44,97 @@ Extraction rules:
 Return ONLY the JSON object matching the schema. Do not include explanation.`;
 
 function buildSystemPrompt() {
-  const todayLagos = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }); // YYYY-MM-DD
+  const todayLagos = new Date().toLocaleDateString("en-CA", {
+    timeZone: "Africa/Lagos",
+  }); // YYYY-MM-DD
   const products = store.getProducts();
-  const cataloguePart = products && products.length > 0
-    ? `\n\nCATALOGUE (exact product names — match customer text to the closest name here):\n${products.map(p => p.name).join('\n')}`
-    : '';
+  const cataloguePart =
+    products && products.length > 0
+      ? `\n\nCATALOGUE (exact product names — match customer text to the closest name here):\n${products.map((p) => p.name).join("\n")}`
+      : "";
   return `${BASE_SYSTEM_PROMPT}\n\nToday's date (Lagos time): ${todayLagos}${cataloguePart}`;
 }
 
 // OpenAI structured-output schema (strict: true compatible)
 const RESPONSE_FORMAT = {
-  type: 'json_schema',
+  type: "json_schema",
   json_schema: {
-    name: 'order_extraction',
+    name: "order_extraction",
     strict: true,
     schema: {
-      type: 'object',
+      type: "object",
       properties: {
         customer: {
-          type: 'object',
+          type: "object",
           properties: {
-            name:      { anyOf: [{ type: 'string' }, { type: 'null' }] },
-            phone:     { anyOf: [{ type: 'string' }, { type: 'null' }] },
-            instagram: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+            name: { anyOf: [{ type: "string" }, { type: "null" }] },
+            phone: { anyOf: [{ type: "string" }, { type: "null" }] },
+            instagram: { anyOf: [{ type: "string" }, { type: "null" }] },
           },
-          required: ['name', 'phone', 'instagram'],
+          required: ["name", "phone", "instagram"],
           additionalProperties: false,
         },
         fulfillment: {
-          type: 'object',
+          type: "object",
           properties: {
-            type:      { type: 'string', enum: ['pickup', 'delivery', 'unknown'] },
-            address:   { anyOf: [{ type: 'string' }, { type: 'null' }] },
-            branch:    { anyOf: [{ type: 'string' }, { type: 'null' }] },
-            statedFee: { anyOf: [{ type: 'number' }, { type: 'null' }] },
+            type: { type: "string", enum: ["pickup", "delivery", "unknown"] },
+            address: { anyOf: [{ type: "string" }, { type: "null" }] },
+            branch: { anyOf: [{ type: "string" }, { type: "null" }] },
+            statedFee: { anyOf: [{ type: "number" }, { type: "null" }] },
           },
-          required: ['type', 'address', 'branch', 'statedFee'],
+          required: ["type", "address", "branch", "statedFee"],
           additionalProperties: false,
         },
         itemLines: {
-          type: 'array',
+          type: "array",
           items: {
-            type: 'object',
+            type: "object",
             properties: {
-              raw:           { type: 'string' },
-              productPhrase: { type: 'string' },
-              sizeToken:     { anyOf: [{ type: 'string' }, { type: 'null' }] },
-              qty:           { type: 'integer' },
-              statedPrice:   { anyOf: [{ type: 'number' }, { type: 'null' }] },
+              raw: { type: "string" },
+              productPhrase: { type: "string" },
+              sizeToken: { anyOf: [{ type: "string" }, { type: "null" }] },
+              qty: { type: "integer" },
+              statedPrice: { anyOf: [{ type: "number" }, { type: "null" }] },
             },
-            required: ['raw', 'productPhrase', 'sizeToken', 'qty', 'statedPrice'],
+            required: [
+              "raw",
+              "productPhrase",
+              "sizeToken",
+              "qty",
+              "statedPrice",
+            ],
             additionalProperties: false,
           },
         },
-        statedTotal:   { anyOf: [{ type: 'number' }, { type: 'null' }] },
-        scheduledDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        statedTotal: { anyOf: [{ type: "number" }, { type: "null" }] },
+        scheduledDate: { anyOf: [{ type: "string" }, { type: "null" }] },
         recipient: {
           anyOf: [
             {
-              type: 'object',
+              type: "object",
               properties: {
-                name:  { anyOf: [{ type: 'string' }, { type: 'null' }] },
-                phone: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+                name: { anyOf: [{ type: "string" }, { type: "null" }] },
+                phone: { anyOf: [{ type: "string" }, { type: "null" }] },
               },
-              required: ['name', 'phone'],
+              required: ["name", "phone"],
               additionalProperties: false,
             },
-            { type: 'null' },
+            { type: "null" },
           ],
         },
-        notes:         { type: 'array', items: { type: 'string' } },
-        receiptName:   { anyOf: [{ type: 'string' }, { type: 'null' }] },
+        notes: { type: "array", items: { type: "string" } },
+        receiptName: { anyOf: [{ type: "string" }, { type: "null" }] },
       },
-      required: ['customer', 'fulfillment', 'itemLines', 'statedTotal', 'scheduledDate', 'recipient', 'notes', 'receiptName'],
+      required: [
+        "customer",
+        "fulfillment",
+        "itemLines",
+        "statedTotal",
+        "scheduledDate",
+        "recipient",
+        "notes",
+        "receiptName",
+      ],
       additionalProperties: false,
     },
   },
@@ -130,8 +148,8 @@ async function aiSegment(rawMessage) {
     temperature: 0,
     response_format: RESPONSE_FORMAT,
     messages: [
-      { role: 'system', content: buildSystemPrompt() },
-      { role: 'user', content: rawMessage },
+      { role: "system", content: buildSystemPrompt() },
+      { role: "user", content: rawMessage },
     ],
   });
 
@@ -147,9 +165,14 @@ async function aiSegment(rawMessage) {
 
 async function segment(rawMessage) {
   try {
-    return await aiSegment(rawMessage);
+    const response = await aiSegment(rawMessage);
+    console.log("response: ", response);
+    return response;
   } catch (err) {
-    console.warn('[ai-segmenter] OpenAI call failed, falling back to rule-based parser:', err.message);
+    console.warn(
+      "[ai-segmenter] OpenAI call failed, falling back to rule-based parser:",
+      err.message,
+    );
     return ruleSegment(rawMessage);
   }
 }

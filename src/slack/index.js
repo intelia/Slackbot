@@ -20,6 +20,7 @@ function createApp() {
   app.command("/weekly-summary", handlers.handleWeeklySummaryCommand);
   app.command("/monthly-summary", handlers.handleMonthlySummaryCommand);
   app.command("/refresh-products", handlers.handleRefreshProductsCommand);
+  app.command("/availability", handlers.handleAvailabilityCommand);
 
   // ── Events ──────────────────────────────────────────────────────────────────
   app.event("app_mention", handlers.handleMentionOrder);
@@ -101,6 +102,12 @@ function createApp() {
 
   // Menu live filter (fires on each keystroke, updates modal via views.update)
   app.action("menu_search_input", handlers.handleMenuSearch);
+
+  // Availability live filter + copy
+  app.action("availability_search_input", handlers.handleAvailabilitySearch);
+  app.action("avail_copy_product", handlers.handleAvailabilityCopyProduct);
+  app.action("avail_copy_all", handlers.handleAvailabilityCopyAll);
+  app.action("avail_dismiss_copy", handlers.handleAvailabilityDismiss);
 
   // Cities browse (no-op ack — read-only modal)
   app.action("cities_search_select", handlers.handleCitiesSelect);
