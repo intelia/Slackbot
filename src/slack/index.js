@@ -21,6 +21,7 @@ function createApp() {
   app.command("/monthly-summary", handlers.handleMonthlySummaryCommand);
   app.command("/refresh-products", handlers.handleRefreshProductsCommand);
   app.command("/available", handlers.handleAvailabilityCommand);
+  app.command("/set-initial", handlers.handleSetInitialCommand);
 
   // ── Events ──────────────────────────────────────────────────────────────────
   app.event("app_mention", handlers.handleMentionOrder);

@@ -28,6 +28,12 @@ db.exec(`
     key   TEXT PRIMARY KEY,
     value TEXT NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS csr_initials (
+    initial      TEXT PRIMARY KEY,
+    name         TEXT NOT NULL,
+    slack_user_id TEXT,
+    updated_at   INTEGER NOT NULL
+  );
 `);
 
 // Migrations
@@ -176,6 +182,22 @@ function getAllPendingOrders() {
     });
 }
 
+// ── CSR initials ─────────────────────────────────────────────────────────────
+
+function setCsrInitial(initial, name, slackUserId) {
+  db.prepare(
+    'INSERT OR REPLACE INTO csr_initials (initial, name, slack_user_id, updated_at) VALUES (?, ?, ?, ?)'
+  ).run(initial.toUpperCase(), name, slackUserId || null, Date.now());
+}
+
+function getCsrByInitial(initial) {
+  return db.prepare('SELECT initial, name FROM csr_initials WHERE initial = ?').get(initial.toUpperCase());
+}
+
+function getAllCsrInitials() {
+  return db.prepare('SELECT initial, name FROM csr_initials ORDER BY initial ASC').all();
+}
+
 // ── Bot metadata (version tracking, etc.) ────────────────────────────────────
 
 function getMetaValue(key) {
@@ -194,4 +216,5 @@ module.exports = {
   lagosWeekBounds, lagosMonthBounds, isLastDayOfLagosMonth,
   savePendingOrder, deletePendingOrder, getAllPendingOrders, clearAllPendingOrders,
   getMetaValue, setMetaValue,
+  setCsrInitial, getCsrByInitial, getAllCsrInitials,
 };

@@ -34,6 +34,9 @@ const {
   deletePendingOrder,
   getAllPendingOrders,
   clearAllPendingOrders,
+  setCsrInitial,
+  getCsrByInitial,
+  getAllCsrInitials,
 } = require("../data/db");
 const { parseModification } = require("../parser/mod-segmenter");
 const { forceRefresh } = require("../data/loader");
@@ -84,6 +87,23 @@ async function _fetchAvailability() {
   _availCache = await SystemProducts.fetchProductsWithAvailability();
   _availCacheAt = now;
   return _availCache;
+}
+
+// ── CSR initial helpers ───────────────────────────────────────────────────────
+// Extracts #XX at the very end of a message (1–4 uppercase letters after #).
+function extractInitial(text) {
+  const match = (text || "").trim().match(/#([A-Za-z]{1,4})\s*$/);
+  return match ? match[1].toUpperCase() : null;
+}
+
+// Returns the display label for who posted the order.
+// Format: "Bimbo  ·  #BB" | "#BB" (no mapping) | "<@slackId>" (no initial)
+function resolveParsedBy(initial, slackUserId) {
+  if (initial) {
+    const row = getCsrByInitial(initial);
+    return row ? `${row.name}  ·  #${initial}` : `#${initial}`;
+  }
+  return slackUserId ? `<@${slackUserId}>` : "—";
 }
 
 // ── In-memory order state (backed by SQLite for restart recovery) ─────────────
@@ -183,6 +203,7 @@ async function handleParseOrderSubmit({ ack, body, view, client }) {
 
   if (!rawText || !channelId) return;
 
+  const submitterId = body.user.id;
   const existing = findDuplicate(rawText);
   if (existing) {
     const warning = await client.chat.postMessage({
@@ -194,6 +215,7 @@ async function handleParseOrderSubmit({ ack, body, view, client }) {
       pendingParseMap.set(stateKey(channelId, warning.ts), {
         channelId,
         rawText,
+        userId: submitterId,
       });
     }
     return;
@@ -215,6 +237,8 @@ async function handleParseOrderSubmit({ ack, body, view, client }) {
 
   const order = await parse(rawText);
   order.paymentStatus = "verifying";
+  order.parsedByInitial = extractInitial(rawText);
+  order.parsedBy = resolveParsedBy(order.parsedByInitial, submitterId);
   const blocks = buildReviewOrderBlocks(order);
 
   if (loading.ts) {
@@ -250,6 +274,7 @@ async function handleMentionOrder({ event, client }) {
         channelId,
         rawText,
         threadTs: event.ts,
+        userId: event.user,
       });
     }
     return;
@@ -273,6 +298,8 @@ async function handleMentionOrder({ event, client }) {
   const order = await parse(rawText);
   order.slackRootTs = event.ts; // thread root = the mention ts, not the bot's reply ts
   order.paymentStatus = "verifying";
+  order.parsedByInitial = extractInitial(rawText);
+  order.parsedBy = resolveParsedBy(order.parsedByInitial, event.user);
   const blocks = buildReviewOrderBlocks(order);
 
   if (loading.ts) {
@@ -868,6 +895,8 @@ async function handleParseAnyway({ ack, body, client }) {
 
   const order = await parse(pending.rawText);
   order.paymentStatus = "verifying";
+  order.parsedByInitial = extractInitial(pending.rawText);
+  order.parsedBy = resolveParsedBy(order.parsedByInitial, pending.userId);
   const blocks = buildReviewOrderBlocks(order);
 
   await client.chat.update({
@@ -2195,6 +2224,43 @@ async function handleAvailabilityDismiss({ ack, body }) {
   }).catch(() => {});
 }
 
+// ── /set-initial command ──────────────────────────────────────────────────────
+
+async function handleSetInitialCommand({ command, ack, respond }) {
+  await ack();
+  const text = (command.text || "").trim();
+
+  if (!text) {
+    const all = getAllCsrInitials();
+    if (all.length === 0) {
+      await respond({ response_type: "ephemeral", text: "_No initials registered yet._\nUsage: `/set-initial BB Bimbo`" });
+      return;
+    }
+    const lines = all.map((r) => `*#${r.initial}* → ${r.name}`).join("\n");
+    await respond({ response_type: "ephemeral", text: `*Registered CSR Initials:*\n${lines}` });
+    return;
+  }
+
+  const [initialRaw, ...nameParts] = text.split(/\s+/);
+  const initial = initialRaw.toUpperCase();
+  const name = nameParts.join(" ").trim();
+
+  if (!/^[A-Z]{1,4}$/.test(initial)) {
+    await respond({ response_type: "ephemeral", text: "⚠️ Invalid initial — use 1–4 letters only, e.g. `/set-initial BB Bimbo`" });
+    return;
+  }
+  if (!name) {
+    await respond({ response_type: "ephemeral", text: "⚠️ Please provide a name. Usage: `/set-initial BB Bimbo`" });
+    return;
+  }
+
+  setCsrInitial(initial, name, command.user_id);
+  await respond({
+    response_type: "in_channel",
+    text: `✅ *#${initial}* → *${name}* registered.`,
+  });
+}
+
 async function handleRefreshProductsCommand({ command, ack, respond }) {
   await ack();
   try {
@@ -2607,6 +2673,7 @@ module.exports = {
   handleDailySummaryCommand,
   handleWeeklySummaryCommand,
   handleMonthlySummaryCommand,
+  handleSetInitialCommand,
   handleAvailabilityCommand,
   handleAvailabilitySearch,
   handleAvailabilityCopyProduct,

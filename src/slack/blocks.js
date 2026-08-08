@@ -200,11 +200,12 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
   const refLine = order.clientReference
     ? `Ref: \`${order.clientReference}\``
     : "";
+  const parsedByLine = order.parsedBy ? `\n_Posted by: ${order.parsedBy}_` : "";
   blocks.push({
     type: "section",
     text: {
       type: "mrkdwn",
-      text: `*REVIEW ORDER*${refLine ? "  ·  " + refLine : ""}\n${statusText}`,
+      text: `*REVIEW ORDER*${refLine ? "  ·  " + refLine : ""}\n${statusText}${parsedByLine}`,
     },
   });
   blocks.push({ type: "divider" });
@@ -464,7 +465,7 @@ function buildConfirmationBlocks(order, orderNumber, confirmedBy) {
     type: "section",
     text: {
       type: "mrkdwn",
-      text: `✅  *ORDER CONFIRMED*${refPart}${numPart}\nConfirmed by <@${confirmedBy}>`,
+      text: `✅  *ORDER CONFIRMED*${refPart}${numPart}\nConfirmed by <@${confirmedBy}>${order.parsedBy ? "  ·  Posted by: " + order.parsedBy : ""}`,
     },
   });
   blocks.push({ type: "divider" });
@@ -1545,21 +1546,20 @@ function _buildCsrText(csrOrders) {
   if (csrOrders.length === 0) return null;
   const byUser = {};
   for (const o of csrOrders) {
-    const u = o._confirmedBy || "unknown";
+    // Use parsedBy (name from initial) if available; fall back to Slack mention for old orders
+    const u = o.parsedBy || (o._confirmedBy ? `<@${o._confirmedBy}>` : "unknown");
     byUser[u] = (byUser[u] || 0) + 1;
   }
   const sorted = Object.entries(byUser).sort((a, b) => b[1] - a[1]);
-  const lines = sorted.map(([uid, cnt]) =>
-    uid === "unknown"
-      ? `Unknown — *${cnt}* orders`
-      : `<@${uid}> — *${cnt}* orders`,
+  const lines = sorted.map(([name, cnt]) =>
+    `${name === "unknown" ? "Unknown" : name} — *${cnt}* orders`,
   );
   const top = sorted[0];
   const bottom = sorted[sorted.length - 1];
   const footer = [
-    top ? `🏆 *Top Performer:* <@${top[0]}> (${top[1]})` : null,
+    top ? `🏆 *Top Performer:* ${top[0]} (${top[1]})` : null,
     bottom && bottom[0] !== top[0]
-      ? `📉 *Lowest Performer:* <@${bottom[0]}> (${bottom[1]})`
+      ? `📉 *Lowest Performer:* ${bottom[0]} (${bottom[1]})`
       : null,
   ].filter(Boolean);
   return ["*👥  CSR Performance*", ...lines, "", ...footer]
