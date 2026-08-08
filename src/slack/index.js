@@ -20,7 +20,7 @@ function createApp() {
   app.command("/weekly-summary", handlers.handleWeeklySummaryCommand);
   app.command("/monthly-summary", handlers.handleMonthlySummaryCommand);
   app.command("/refresh-products", handlers.handleRefreshProductsCommand);
-  app.command("/availability", handlers.handleAvailabilityCommand);
+  app.command("/available", handlers.handleAvailabilityCommand);
 
   // ── Events ──────────────────────────────────────────────────────────────────
   app.event("app_mention", handlers.handleMentionOrder);
@@ -93,7 +93,10 @@ function createApp() {
   app.action("mod_add_search_btn", handlers.handleModAddSearchBtn);
   app.view("mod_add_search_modal", handlers.handleModAddSearchModalSubmit);
   app.action("mod_remove_pick", handlers.handleModRemovePick);
-  app.action("mod_remove_unresolved_pick", handlers.handleModRemoveUnresolvedPick);
+  app.action(
+    "mod_remove_unresolved_pick",
+    handlers.handleModRemoveUnresolvedPick,
+  );
   app.action("mod_zone_select", handlers.handleModZoneSelect);
   app.action("mod_city_picker_btn", handlers.handleModCityPickerBtn);
   app.action("mod_try_payment_name", handlers.handleModTryPaymentName);
