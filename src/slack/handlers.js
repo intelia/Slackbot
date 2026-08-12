@@ -41,6 +41,7 @@ const {
 const { parseModification } = require("../parser/mod-segmenter");
 const { forceRefresh } = require("../data/loader");
 const SystemProducts = require("../../systemProducts");
+const { PAYMENT_ADJUSTMENT_LIMIT } = require("../constants");
 const {
   fmt,
   trunc,
@@ -66,6 +67,7 @@ const {
   buildMonthlyReportBlocks,
   buildAvailabilityModal,
   applyAvailabilityFilter,
+  buildAmountAdjustModal,
 } = require("./blocks");
 
 // ── Ephemeral helper ──────────────────────────────────────────────────────────
@@ -2224,6 +2226,90 @@ async function handleAvailabilityDismiss({ ack, body }) {
   }).catch(() => {});
 }
 
+// ── Amount adjustment ─────────────────────────────────────────────────────────
+
+async function handleAmountAdjust({ ack, body, client }) {
+  await ack();
+  const channelId = body.container.channel_id;
+  const ts = body.container.message_ts;
+  const threadTs = body.container.thread_ts || null;
+  const order = getOrder(channelId, ts);
+  if (!order) return;
+
+  const meta = JSON.stringify({ channelId, ts, threadTs, confirmedBy: body.user.id });
+  await client.views.open({
+    trigger_id: body.trigger_id,
+    view: buildAmountAdjustModal(meta, order.orderTotal, PAYMENT_ADJUSTMENT_LIMIT),
+  });
+}
+
+async function handleAmountAdjustSubmit({ ack, body, view, client }) {
+  const rawInput = (
+    view.state.values?.adjust_amount_block?.adjust_amount_input?.value || ""
+  ).trim();
+  const diff = parseFloat(rawInput.replace(/,/g, ""));
+
+  if (isNaN(diff)) {
+    await ack({
+      response_action: "errors",
+      errors: { adjust_amount_block: "Enter a valid number, e.g. -500 or 300" },
+    });
+    return;
+  }
+  if (Math.abs(diff) > PAYMENT_ADJUSTMENT_LIMIT) {
+    await ack({
+      response_action: "errors",
+      errors: { adjust_amount_block: `Maximum allowed difference is ±${fmt(PAYMENT_ADJUSTMENT_LIMIT)}` },
+    });
+    return;
+  }
+  await ack();
+
+  const { channelId, ts, threadTs = null, confirmedBy } = JSON.parse(
+    view.private_metadata || "{}",
+  );
+  const order = getOrder(channelId, ts);
+  if (!order) return;
+
+  // formula: adjustedAmount = orderTotal - diff
+  // e.g. orderTotal=10000, diff=-500 → sends 10500 (customer paid more)
+  const adjustedAmount = order.orderTotal - diff;
+  const customerName = order.receiptName || order.customer?.name || "";
+  const recipientName = order.receiptName
+    ? order.recipient?.name || order.customer?.name || customerName
+    : order.recipient?.name || customerName;
+
+  let match;
+  try {
+    match = await verifyPayment(customerName, recipientName, adjustedAmount);
+  } catch (err) {
+    await ephem(client, {
+      channel: channelId, user: confirmedBy, threadTs,
+      text: `⚠️ Payment verification error: ${err.message}`,
+    });
+    return;
+  }
+
+  if (match) {
+    order.paymentStatus = "verified";
+    order.paymentData = match;
+  } else {
+    order.paymentStatus = "not_found";
+    await ephem(client, {
+      channel: channelId, user: confirmedBy, threadTs,
+      text: `⚠️ No payment found for adjusted amount *${fmt(adjustedAmount)}*. Try a different value or request an OTP.`,
+    });
+  }
+
+  saveOrder(channelId, ts, order);
+  await client.chat.update({
+    channel: channelId,
+    ts,
+    text: "Review Order",
+    blocks: buildReviewOrderBlocks(order),
+  }).catch(() => {});
+}
+
 // ── /set-initial command ──────────────────────────────────────────────────────
 
 async function handleSetInitialCommand({ command, ack, respond }) {
@@ -2673,6 +2759,8 @@ module.exports = {
   handleDailySummaryCommand,
   handleWeeklySummaryCommand,
   handleMonthlySummaryCommand,
+  handleAmountAdjust,
+  handleAmountAdjustSubmit,
   handleSetInitialCommand,
   handleAvailabilityCommand,
   handleAvailabilitySearch,

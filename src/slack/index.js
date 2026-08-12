@@ -77,6 +77,8 @@ function createApp() {
   app.action("enter_otp", handlers.handleEnterOtp);
   app.view("otp_verify_submit", handlers.handleOtpVerifySubmit);
   app.action("back_to_review", handlers.handleBackToReview);
+  app.action("amount_adjust", handlers.handleAmountAdjust);
+  app.view("amount_adjust_submit", handlers.handleAmountAdjustSubmit);
 
   // Duplicate warning
   app.action("parse_anyway", handlers.handleParseAnyway);

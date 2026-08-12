@@ -352,9 +352,15 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
       paymentText = `🔍  _Verifying payment…_${receiptNameNote}`;
     } else if (ps === "verified") {
       const p = order.paymentData || {};
-      const paid = p.amount ? fmt(p.amount) + "  ·  " : "";
-      const payer = p.payerName ? `Payer: *${p.payerName}*  ·  ` : "";
-      paymentText = `✅  *Payment verified* — ${paid}${payer}Ref: \`${p.transactionRef || "—"}\``;
+      if (p.combined) {
+        const count = (p.payments || []).length;
+        const refs = (p.payments || []).map((pay) => `\`${pay.transactionRef}\``).join(", ");
+        paymentText = `✅  *Payment verified* (${count} combined, ${p.timeDiffMinutes}min apart) — Total: *${fmt(p.totalAmount)}*  ·  Refs: ${refs}`;
+      } else {
+        const paid = p.amount ? fmt(p.amount) + "  ·  " : "";
+        const payer = p.payerName ? `Payer: *${p.payerName}*  ·  ` : "";
+        paymentText = `✅  *Payment verified* — ${paid}${payer}Ref: \`${p.transactionRef || "—"}\``;
+      }
     } else if (ps === "not_found") {
       paymentText =
         `⚠️  *No matching payment found* — use Refetch Payment or Request OTP below${receiptNameNote}`;
@@ -402,6 +408,11 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
           type: "button",
           text: { type: "plain_text", text: "🔄  Refetch Payment" },
           action_id: "refetch_payment",
+        },
+        {
+          type: "button",
+          text: { type: "plain_text", text: "💱  Adjust Amount" },
+          action_id: "amount_adjust",
         },
         {
           type: "button",
@@ -574,11 +585,17 @@ function buildConfirmationBlocks(order, orderNumber, confirmedBy) {
     paymentLine = `🔐  *Payment override (OTP)* — authorised by ${auth}`;
   } else if (order.paymentStatus === "verified" && order.paymentData) {
     const p = order.paymentData;
-    const parts = [];
-    if (p.payerName) parts.push(`Payer: *${p.payerName}*`);
-    if (p.transactionRef) parts.push(`Ref: \`${p.transactionRef}\``);
-    if (p.amount) parts.push(fmt(p.amount));
-    paymentLine = `✅  *Payment verified* — ${parts.join("  ·  ")}`;
+    if (p.combined) {
+      const count = (p.payments || []).length;
+      const refs = (p.payments || []).map((pay) => `\`${pay.transactionRef}\``).join(", ");
+      paymentLine = `✅  *Payment verified* (${count} combined, ${p.timeDiffMinutes}min apart) — ${fmt(p.totalAmount)}  ·  Refs: ${refs}`;
+    } else {
+      const parts = [];
+      if (p.payerName) parts.push(`Payer: *${p.payerName}*`);
+      if (p.transactionRef) parts.push(`Ref: \`${p.transactionRef}\``);
+      if (p.amount) parts.push(fmt(p.amount));
+      paymentLine = `✅  *Payment verified* — ${parts.join("  ·  ")}`;
+    }
   }
 
   if (paymentLine) {
@@ -2020,6 +2037,11 @@ function buildPaymentNotFoundBlocks(order) {
       elements: [
         {
           type: "button",
+          text: { type: "plain_text", text: "💱  Adjust Amount" },
+          action_id: "amount_adjust",
+        },
+        {
+          type: "button",
           text: { type: "plain_text", text: "📲  Request Override OTP" },
           action_id: "request_otp",
           style: "primary",
@@ -2032,6 +2054,44 @@ function buildPaymentNotFoundBlocks(order) {
       ],
     },
   ];
+}
+
+function buildAmountAdjustModal(privateMetadata, orderTotal, limit) {
+  return {
+    type: "modal",
+    callback_id: "amount_adjust_submit",
+    private_metadata: privateMetadata,
+    title: { type: "plain_text", text: "Adjust Search Amount" },
+    submit: { type: "plain_text", text: "Search" },
+    close: { type: "plain_text", text: "Cancel" },
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: [
+            `Order total: *${fmt(orderTotal)}*`,
+            ``,
+            `Enter the difference between the order total and the actual payment amount.`,
+            `Use a *negative* value if the customer paid *more* than the order total.`,
+            ``,
+            `_Example: order ₦10,000, customer paid ₦10,500 → enter \`-500\`_`,
+            `_Maximum allowed: ±${fmt(limit)}_`,
+          ].join("\n"),
+        },
+      },
+      {
+        type: "input",
+        block_id: "adjust_amount_block",
+        label: { type: "plain_text", text: "Amount difference" },
+        element: {
+          type: "plain_text_input",
+          action_id: "adjust_amount_input",
+          placeholder: { type: "plain_text", text: "e.g.  -500  or  300" },
+        },
+      },
+    ],
+  };
 }
 
 function buildOtpPendingBlocks(order) {
@@ -2311,4 +2371,5 @@ module.exports = {
   buildOtpModal,
   buildAvailabilityModal,
   applyAvailabilityFilter,
+  buildAmountAdjustModal,
 };
