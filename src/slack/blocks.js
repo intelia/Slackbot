@@ -354,8 +354,9 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
       const p = order.paymentData || {};
       if (p.combined) {
         const count = (p.payments || []).length;
+        const payer = p.payments?.[0]?.payerName ? `Payer: *${p.payments[0].payerName}*  ·  ` : "";
         const refs = (p.payments || []).map((pay) => `\`${pay.transactionRef}\``).join(", ");
-        paymentText = `✅  *Payment verified* (${count} combined, ${p.timeDiffMinutes}min apart) — Total: *${fmt(p.totalAmount)}*  ·  Refs: ${refs}`;
+        paymentText = `✅  *Payment verified* (${count} combined, ${p.timeDiffMinutes}min apart) — ${payer}Total: *${fmt(p.totalAmount)}*  ·  Refs: ${refs}`;
       } else {
         const paid = p.amount ? fmt(p.amount) + "  ·  " : "";
         const payer = p.payerName ? `Payer: *${p.payerName}*  ·  ` : "";
@@ -587,8 +588,9 @@ function buildConfirmationBlocks(order, orderNumber, confirmedBy) {
     const p = order.paymentData;
     if (p.combined) {
       const count = (p.payments || []).length;
+      const payer = p.payments?.[0]?.payerName ? `Payer: *${p.payments[0].payerName}*  ·  ` : "";
       const refs = (p.payments || []).map((pay) => `\`${pay.transactionRef}\``).join(", ");
-      paymentLine = `✅  *Payment verified* (${count} combined, ${p.timeDiffMinutes}min apart) — ${fmt(p.totalAmount)}  ·  Refs: ${refs}`;
+      paymentLine = `✅  *Payment verified* (${count} combined, ${p.timeDiffMinutes}min apart) — ${payer}${fmt(p.totalAmount)}  ·  Refs: ${refs}`;
     } else {
       const parts = [];
       if (p.payerName) parts.push(`Payer: *${p.payerName}*`);
