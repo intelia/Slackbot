@@ -348,7 +348,10 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
       ? `  _(receipt name: *${order.receiptName}*)_`
       : "";
     let paymentText;
-    if (ps === "verifying") {
+    if (order.otpOverride) {
+      const auth = order.otpAuthorizedBy ? `<@${order.otpAuthorizedBy}>` : "operator";
+      paymentText = `🔐  *Payment override (OTP)* — authorised by ${auth}`;
+    } else if (ps === "verifying") {
       paymentText = `🔍  _Verifying payment…_${receiptNameNote}`;
     } else if (ps === "verified") {
       const p = order.paymentData || {};
@@ -400,7 +403,8 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
 
   // When payment not found and order is otherwise ready: replace Confirm with
   // inline options to avoid an extra navigation step.
-  if (order.paymentStatus === "not_found" && canConfirm) {
+  // Skip this gate when OTP override is already authorised.
+  if (order.paymentStatus === "not_found" && canConfirm && !order.otpOverride) {
     blocks.push({
       type: "actions",
       elements: [
@@ -614,6 +618,7 @@ function buildConfirmationBlocks(order, orderNumber, confirmedBy) {
       if (r.payerName) parts.push(`Payer: *${r.payerName}*`);
       if (r.transactionRef) parts.push(`Ref: \`${r.transactionRef}\``);
       if (r.amount) parts.push(fmt(r.amount));
+      if (r.linkedBy) parts.push(`Linked by <@${r.linkedBy}>`);
       blocks.push({
         type: "context",
         elements: [{ type: "mrkdwn", text: `🧾  *Receipt linked* — ${parts.join("  ·  ")}` }],
@@ -2132,7 +2137,7 @@ function buildOtpPendingBlocks(order) {
       text: {
         type: "mrkdwn",
         text: [
-          `📲  *OTP sent to operator via WhatsApp*`,
+          `📲  *OTP sent to manager*`,
           `Collect the 6-digit code from the designated operator and enter it below.`,
           `Ref: \`${ref}\`  ·  _OTP is valid for 30 minutes._`,
         ].join("\n"),

@@ -4,6 +4,15 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: "1.10.0",
+    notes: [
+      "OTP authorize button — managers can approve a payment override directly from the Slack OTP notification without navigating back to the order thread",
+      "OTP message status tracking — the OTP notification updates live: shows who authorised, then ⏳ Receipt not yet linked after order is pushed, then 🧾 Receipt linked after a receipt is matched",
+      "Thread link in OTP notification — the OTP message includes a direct link back to the order thread (slackThreadLink field sent to Zupa)",
+      "Receipt linking restricted to managers — only authorised managers can open the Link Payment Receipt modal on confirmation cards",
+    ],
+  },
+  {
     version: "1.9.0",
     notes: [
       'OTP receipt linking — OTP-confirmed orders now show a "🧾 Link Payment Receipt" button on the confirmation card',

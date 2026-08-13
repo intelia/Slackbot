@@ -184,7 +184,9 @@ async function verifyPayment(customerName, recipientName, amount) {
 
 // Sends a 6-digit OTP to the operator's WhatsApp. Throws on error.
 // order: optional { customer, recipient, orderTotal, items: [{ productName, sizeName, qty, lineTotal }] }
-async function requestOverrideOtp(clientReference, order = {}) {
+// slackThreadLink: optional permalink to the Slack thread where the OTP was requested;
+//   Zupa includes it as a "Go to thread" button in the Slack OTP notification it sends.
+async function requestOverrideOtp(clientReference, order = {}, slackThreadLink = null) {
   const body = { clientReference };
 
   const customerName = order.customer?.name || null;
@@ -204,9 +206,22 @@ async function requestOverrideOtp(clientReference, order = {}) {
     }));
   }
 
+  if (slackThreadLink) body.slackThreadLink = slackThreadLink;
+
   const { status, data } = await paymentFetch("payment/order/override-otp", body);
   if (status === 200 && data.success) return true;
   throw new Error(data.message || `OTP request failed (HTTP ${status})`);
+}
+
+// Authorises an OTP override without requiring the code — used when the manager
+// clicks "Authorize" directly in the Slack OTP notification.
+// The backend must confirm that a valid, unexpired OTP was previously issued for this reference.
+async function authorizeOtpOverride(clientReference) {
+  const { status, data } = await paymentFetch("payment/order/override-otp/authorize", {
+    clientReference,
+  });
+  if (status === 200 && data.success) return true;
+  throw new Error(data.message || `OTP authorization failed (HTTP ${status})`);
 }
 
 // Verifies the OTP. Returns true on success, throws with API message on failure.
@@ -278,5 +293,6 @@ module.exports = {
   verifyOverrideOtp,
   lookupReceipt,
   confirmReceiptMatch,
+  authorizeOtpOverride,
   fetchKitchenSummary,
 };

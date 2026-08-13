@@ -110,6 +110,9 @@ function createApp() {
   // Menu live filter (fires on each keystroke, updates modal via views.update)
   app.action("menu_search_input", handlers.handleMenuSearch);
 
+  // OTP remote authorization (button in the Slack OTP notification sent by Zupa)
+  app.action("otp_authorize", handlers.handleOtpAuthorize);
+
   // OTP receipt linking
   app.action("link_receipt_btn", handlers.handleLinkReceiptBtn);
   app.action("confirm_receipt_link", handlers.handleConfirmReceiptLink);
