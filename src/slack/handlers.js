@@ -16,12 +16,15 @@ const {
   verifyPayment,
   requestOverrideOtp,
   verifyOverrideOtp,
+  lookupReceipt,
+  confirmReceiptMatch,
 } = require("../zupa");
 const {
   findDuplicate,
   recordOrder,
   saveConfirmedOrder,
   getConfirmedOrder,
+  getConfirmedOrderRow,
   updateConfirmedOrder,
   getDailySummary,
   getAllOrdersToday,
@@ -68,6 +71,8 @@ const {
   buildAvailabilityModal,
   applyAvailabilityFilter,
   buildAmountAdjustModal,
+  buildReceiptLookupModal,
+  buildReceiptFoundModal,
 } = require("./blocks");
 
 // ── Ephemeral helper ──────────────────────────────────────────────────────────
@@ -2646,6 +2651,178 @@ async function handleBackToReview({ ack, body, client }) {
   });
 }
 
+// ── OTP receipt linking ───────────────────────────────────────────────────────
+
+async function handleLinkReceiptBtn({ ack, body, client }) {
+  await ack();
+  const channelId = body.container.channel_id;
+  const messageTs = body.container.message_ts;
+  const threadTs = body.container.thread_ts || null;
+  // For /parse-order, no thread → lookupTs = messageTs (the confirmation card ts).
+  // For @mention, threadTs = slackRootTs = the key used in saveConfirmedOrder.
+  const lookupTs = threadTs || messageTs;
+
+  const row = getConfirmedOrderRow(channelId, lookupTs);
+  if (!row) {
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: body.user.id,
+      text: "⚠️ Could not find the confirmed order — please try again.",
+    });
+    return;
+  }
+
+  const meta = JSON.stringify({
+    channelId,
+    messageTs,
+    lookupTs,
+    confirmedBy: row.confirmedBy,
+  });
+  await client.views.open({
+    trigger_id: body.trigger_id,
+    view: buildReceiptLookupModal(meta, row.order),
+  });
+}
+
+async function handleReceiptLookupSubmit({ ack, body, view }) {
+  const vals = view.state.values;
+  const transactionRef = vals.ref_block?.ref_input?.value?.trim() || null;
+  const payerName = vals.name_block?.name_input?.value?.trim() || null;
+  const amountRaw = vals.amount_block?.amount_input?.value?.trim() || null;
+  const amount = amountRaw && !Number.isNaN(Number(amountRaw)) ? Number(amountRaw) : null;
+
+  if (!transactionRef && !payerName && amount === null) {
+    await ack({
+      response_action: "errors",
+      errors: { ref_block: "Enter a transaction reference, or payer name/amount to search." },
+    });
+    return;
+  }
+
+  const query = transactionRef
+    ? { transactionRef }
+    : { ...(payerName ? { payerName } : {}), ...(amount !== null ? { amount } : {}) };
+
+  let receipt;
+  try {
+    receipt = await lookupReceipt(query);
+  } catch (err) {
+    console.error("[handleReceiptLookupSubmit]", err);
+    await ack({
+      response_action: "errors",
+      errors: { ref_block: `Lookup failed: ${err.message}` },
+    });
+    return;
+  }
+
+  if (!receipt) {
+    await ack({
+      response_action: "errors",
+      errors: { ref_block: "No matching receipt found. Try a different reference or name." },
+    });
+    return;
+  }
+
+  const meta = JSON.parse(view.private_metadata || "{}");
+  const updatedMeta = JSON.stringify({ ...meta, foundReceipt: receipt });
+  await ack({ response_action: "update", view: buildReceiptFoundModal(updatedMeta, receipt) });
+}
+
+async function handleConfirmReceiptLink({ ack, body, client }) {
+  await ack();
+  const viewId = body.view?.id;
+  const meta = JSON.parse(body.view?.private_metadata || "{}");
+  const { channelId, messageTs, lookupTs, confirmedBy, foundReceipt } = meta;
+
+  if (!foundReceipt || !channelId) {
+    await client.views.update({
+      view_id: viewId,
+      view: {
+        type: "modal",
+        title: { type: "plain_text", text: "Error" },
+        close: { type: "plain_text", text: "Close" },
+        blocks: [{ type: "section", text: { type: "mrkdwn", text: "⚠️ Session data missing — please try again from the confirmation card." } }],
+      },
+    });
+    return;
+  }
+
+  const row = getConfirmedOrderRow(channelId, lookupTs);
+  if (!row) {
+    await client.views.update({
+      view_id: viewId,
+      view: {
+        type: "modal",
+        title: { type: "plain_text", text: "Error" },
+        close: { type: "plain_text", text: "Close" },
+        blocks: [{ type: "section", text: { type: "mrkdwn", text: "⚠️ Order not found in database — please try again." } }],
+      },
+    });
+    return;
+  }
+
+  const order = row.order;
+
+  try {
+    await confirmReceiptMatch(foundReceipt.transactionRef, order.orderNumber || null);
+  } catch (err) {
+    const msg =
+      err.code === "ALREADY_MATCHED"
+        ? "⚠️ This receipt has already been linked to another order."
+        : `⚠️ Could not link receipt: ${err.message}`;
+    await client.views.update({
+      view_id: viewId,
+      view: {
+        type: "modal",
+        title: { type: "plain_text", text: "Link Receipt" },
+        close: { type: "plain_text", text: "Close" },
+        blocks: [{ type: "section", text: { type: "mrkdwn", text: msg } }],
+      },
+    });
+    return;
+  }
+
+  // Append to linked receipts on the order and persist
+  order.linkedReceipts = [
+    ...(order.linkedReceipts || []),
+    {
+      transactionRef: foundReceipt.transactionRef,
+      amount: foundReceipt.amount,
+      payerName: foundReceipt.payerName,
+      paidAt: foundReceipt.paidAt,
+    },
+  ];
+  updateConfirmedOrder(channelId, lookupTs, order);
+
+  // Rebuild the confirmation card in-place
+  const resolvedBy = confirmedBy || row.confirmedBy;
+  await client.chat.update({
+    channel: channelId,
+    ts: messageTs,
+    text: `✅ Order confirmed${order.orderNumber ? " · Zupa: " + order.orderNumber : ""}${order.clientReference ? " · Ref: " + order.clientReference : ""}`,
+    blocks: buildConfirmationBlocks(order, order.orderNumber, resolvedBy),
+  });
+
+  // Update the modal to a success state (closes interaction)
+  await client.views.update({
+    view_id: viewId,
+    view: {
+      type: "modal",
+      title: { type: "plain_text", text: "Receipt Linked" },
+      close: { type: "plain_text", text: "Close" },
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `✅ Receipt \`${foundReceipt.transactionRef}\` linked successfully to order *${order.orderNumber || order.clientReference}*.`,
+          },
+        },
+      ],
+    },
+  });
+}
+
 // ── Startup: restore pending orders from SQLite ───────────────────────────────
 
 async function restorePendingOrders(client) {
@@ -2777,5 +2954,8 @@ module.exports = {
   handleEnterOtp,
   handleOtpVerifySubmit,
   handleBackToReview,
+  handleLinkReceiptBtn,
+  handleReceiptLookupSubmit,
+  handleConfirmReceiptLink,
   clearExpiredPendingOrders,
 };

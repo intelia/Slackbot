@@ -607,6 +607,34 @@ function buildConfirmationBlocks(order, orderNumber, confirmedBy) {
     });
   }
 
+  // ── Linked receipts + Link button (OTP orders only) ───────────────────────
+  if (order.otpOverride) {
+    for (const r of order.linkedReceipts || []) {
+      const parts = [];
+      if (r.payerName) parts.push(`Payer: *${r.payerName}*`);
+      if (r.transactionRef) parts.push(`Ref: \`${r.transactionRef}\``);
+      if (r.amount) parts.push(fmt(r.amount));
+      blocks.push({
+        type: "context",
+        elements: [{ type: "mrkdwn", text: `🧾  *Receipt linked* — ${parts.join("  ·  ")}` }],
+      });
+    }
+    const btnLabel =
+      order.linkedReceipts && order.linkedReceipts.length > 0
+        ? "🧾 Link Another Receipt"
+        : "🧾 Link Payment Receipt";
+    blocks.push({
+      type: "actions",
+      elements: [
+        {
+          type: "button",
+          text: { type: "plain_text", text: btnLabel },
+          action_id: "link_receipt_btn",
+        },
+      ],
+    });
+  }
+
   return blocks;
 }
 
@@ -2348,6 +2376,117 @@ function buildAvailabilityModal(products, query, privateMetadata) {
   };
 }
 
+// ── Receipt lookup modal (step 1) ─────────────────────────────────────────────
+
+function buildReceiptLookupModal(privateMetadata, order) {
+  return {
+    type: "modal",
+    callback_id: "receipt_lookup_submit",
+    private_metadata:
+      typeof privateMetadata === "string"
+        ? privateMetadata
+        : JSON.stringify(privateMetadata),
+    title: { type: "plain_text", text: "Link Payment Receipt" },
+    submit: { type: "plain_text", text: "Search" },
+    close: { type: "plain_text", text: "Cancel" },
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "Enter a transaction reference for an exact match, or search by payer name and amount.",
+        },
+      },
+      {
+        type: "input",
+        block_id: "ref_block",
+        optional: true,
+        label: { type: "plain_text", text: "Transaction Reference" },
+        element: {
+          type: "plain_text_input",
+          action_id: "ref_input",
+          placeholder: { type: "plain_text", text: "e.g. SQGOUR..." },
+        },
+      },
+      {
+        type: "input",
+        block_id: "name_block",
+        optional: true,
+        label: { type: "plain_text", text: "Payer Name" },
+        element: {
+          type: "plain_text_input",
+          action_id: "name_input",
+          initial_value: order?.customer?.name || "",
+        },
+      },
+      {
+        type: "input",
+        block_id: "amount_block",
+        optional: true,
+        label: { type: "plain_text", text: "Amount" },
+        element: {
+          type: "plain_text_input",
+          action_id: "amount_input",
+          initial_value: order?.orderTotal != null ? String(order.orderTotal) : "",
+        },
+      },
+    ],
+  };
+}
+
+// ── Receipt found modal (step 2) ──────────────────────────────────────────────
+
+function buildReceiptFoundModal(privateMetadata, receipt) {
+  const paidAt = receipt.paidAt
+    ? new Date(receipt.paidAt).toLocaleString("en-NG", {
+        timeZone: "Africa/Lagos",
+      })
+    : "—";
+  return {
+    type: "modal",
+    callback_id: "receipt_found_modal",
+    private_metadata:
+      typeof privateMetadata === "string"
+        ? privateMetadata
+        : JSON.stringify(privateMetadata),
+    title: { type: "plain_text", text: "Link Payment Receipt" },
+    close: { type: "plain_text", text: "Cancel" },
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text: "✅ Receipt found — confirm to link it to this order.",
+        },
+      },
+      {
+        type: "section",
+        fields: [
+          { type: "mrkdwn", text: `*Payer*\n${receipt.payerName || "—"}` },
+          { type: "mrkdwn", text: `*Amount*\n${fmt(receipt.amount)}` },
+          {
+            type: "mrkdwn",
+            text: `*Ref*\n\`${receipt.transactionRef}\``,
+          },
+          { type: "mrkdwn", text: `*Status*\n${receipt.status || "—"}` },
+          { type: "mrkdwn", text: `*Paid at*\n${paidAt}` },
+        ],
+      },
+      {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: { type: "plain_text", text: "✅ Confirm & Link" },
+            style: "primary",
+            action_id: "confirm_receipt_link",
+          },
+        ],
+      },
+    ],
+  };
+}
+
 module.exports = {
   fmt,
   trunc,
@@ -2374,4 +2513,6 @@ module.exports = {
   buildAvailabilityModal,
   applyAvailabilityFilter,
   buildAmountAdjustModal,
+  buildReceiptLookupModal,
+  buildReceiptFoundModal,
 };

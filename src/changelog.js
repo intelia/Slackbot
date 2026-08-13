@@ -4,6 +4,15 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: "1.9.0",
+    notes: [
+      'OTP receipt linking — OTP-confirmed orders now show a "🧾 Link Payment Receipt" button on the confirmation card',
+      "Managers can search for a pending receipt by transaction reference or by payer name and amount",
+      'After linking, the receipt is shown on the confirmation card and a "Link Another Receipt" button appears for split-payment situations',
+      "Receipts are locked via confirm-match so the same receipt cannot be linked to two orders",
+    ],
+  },
+  {
     version: "1.8.1",
     notes: [
       "Combined payment matching — orders paid in two transfers are now detected and both refs sent to Zupa",

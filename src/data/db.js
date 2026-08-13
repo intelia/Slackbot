@@ -149,6 +149,12 @@ function getConfirmedOrder(channelId, ts) {
   return row ? JSON.parse(row.order_json) : null;
 }
 
+function getConfirmedOrderRow(channelId, ts) {
+  const row = db.prepare('SELECT order_json, confirmed_by FROM live_orders WHERE channel_ts = ?').get(`${channelId}:${ts}`);
+  if (!row) return null;
+  return { order: JSON.parse(row.order_json), confirmedBy: row.confirmed_by };
+}
+
 function updateConfirmedOrder(channelId, ts, order) {
   db.prepare(
     'UPDATE live_orders SET order_json = ? WHERE channel_ts = ?'
@@ -211,7 +217,7 @@ function setMetaValue(key, value) {
 
 module.exports = {
   findDuplicate, recordOrder,
-  saveConfirmedOrder, getConfirmedOrder, updateConfirmedOrder,
+  saveConfirmedOrder, getConfirmedOrder, getConfirmedOrderRow, updateConfirmedOrder,
   getDailySummary, getAllOrdersToday, getOrdersForPeriod, getOtpOverridesForPeriod,
   lagosWeekBounds, lagosMonthBounds, isLastDayOfLagosMonth,
   savePendingOrder, deletePendingOrder, getAllPendingOrders, clearAllPendingOrders,

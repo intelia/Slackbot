@@ -79,6 +79,7 @@ function createApp() {
   app.action("back_to_review", handlers.handleBackToReview);
   app.action("amount_adjust", handlers.handleAmountAdjust);
   app.view("amount_adjust_submit", handlers.handleAmountAdjustSubmit);
+  app.view("receipt_lookup_submit", handlers.handleReceiptLookupSubmit);
 
   // Duplicate warning
   app.action("parse_anyway", handlers.handleParseAnyway);
@@ -108,6 +109,10 @@ function createApp() {
 
   // Menu live filter (fires on each keystroke, updates modal via views.update)
   app.action("menu_search_input", handlers.handleMenuSearch);
+
+  // OTP receipt linking
+  app.action("link_receipt_btn", handlers.handleLinkReceiptBtn);
+  app.action("confirm_receipt_link", handlers.handleConfirmReceiptLink);
 
   // Availability live filter + copy
   app.action("availability_search_input", handlers.handleAvailabilitySearch);

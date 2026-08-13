@@ -225,6 +225,29 @@ async function verifyOverrideOtp(clientReference, otp) {
 // Returns kitchen summary for a date range (YYYY-MM-DD strings).
 // For a single day, pass the same date for both startDate and endDate.
 // Throws on non-2xx; callers should .catch(() => null) for optional periods.
+// Returns the receipt object if found, null if not found, throws on API errors.
+async function lookupReceipt(query) {
+  const { status, data } = await paymentFetch("payment/order/receipt/lookup", query);
+  if (status === 200 && data.found) return data.receipt;
+  if (status === 404 || (status === 200 && !data.found)) return null;
+  throw new Error(data?.message || `Receipt lookup failed (HTTP ${status})`);
+}
+
+// Locks the receipt to an order. Throws with .code === "ALREADY_MATCHED" on 409.
+async function confirmReceiptMatch(transactionRef, orderNumber) {
+  const body = { transactionRef };
+  if (orderNumber) body.orderNumber = orderNumber;
+  const { status, data } = await paymentFetch("payment/order/receipt/confirm-match", body);
+  if (status === 200) return data;
+  if (status === 409) {
+    throw Object.assign(
+      new Error(data?.message || "Receipt already matched to another order"),
+      { code: "ALREADY_MATCHED" },
+    );
+  }
+  throw new Error(data?.message || `Receipt confirm failed (HTTP ${status})`);
+}
+
 async function fetchKitchenSummary(startDate, endDate) {
   const url = new URL(`${process.env.ZUPA_API}/kitchen-api/daily-summary`);
   url.searchParams.set("startDate", startDate);
@@ -253,5 +276,7 @@ module.exports = {
   verifyPayment,
   requestOverrideOtp,
   verifyOverrideOtp,
+  lookupReceipt,
+  confirmReceiptMatch,
   fetchKitchenSummary,
 };
