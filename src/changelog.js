@@ -4,6 +4,17 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: '1.8.0',
+    notes: [
+      'Combined payment matching — orders paid in two transfers are now detected and both refs sent to Zupa',
+      'Amount adjustment — "Adjust Amount" button lets CSRs enter ±difference (max ±₦1,000) when the customer paid slightly more or less than the order total',
+      'CSR initials — /set-initial BB Bimbo maps a hashtag initial to a name; the poster is identified from the message and shown on review and confirmation cards',
+      '/available command — shows live stock quantities per branch for all products, searchable by name, category, or size',
+      'Delivery city change option added to order modifications',
+      'Payment verification now required for modifications that increase the order total (difference only)',
+    ],
+  },
+  {
     version: '1.7.0',
     notes: [
       'Pending orders now survive bot restarts — review messages are automatically restored on startup',
