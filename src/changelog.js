@@ -4,6 +4,14 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: "1.11.0",
+    notes: [
+      "Mark as Complete button added to OTP order confirmation cards — managers can close the receipt linking flow once all receipts are linked or payment was made outside the system (e.g. cash)",
+      "Marking complete updates the OTP Slack notification to ✅ Payment complete so managers can track status at a glance",
+      "Mark as Complete is restricted to managers only, same as receipt linking",
+    ],
+  },
+  {
     version: "1.10.0",
     notes: [
       "OTP authorize button — managers can approve a payment override directly from the Slack OTP notification without navigating back to the order thread",

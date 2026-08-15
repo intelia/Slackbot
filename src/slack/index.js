@@ -116,6 +116,7 @@ function createApp() {
   // OTP receipt linking
   app.action("link_receipt_btn", handlers.handleLinkReceiptBtn);
   app.action("confirm_receipt_link", handlers.handleConfirmReceiptLink);
+  app.action("mark_payment_complete", handlers.handleMarkPaymentComplete);
 
   // Availability live filter + copy
   app.action("availability_search_input", handlers.handleAvailabilitySearch);

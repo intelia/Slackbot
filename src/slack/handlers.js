@@ -3001,6 +3001,58 @@ async function handleConfirmReceiptLink({ ack, body, client }) {
   });
 }
 
+async function handleMarkPaymentComplete({ ack, body, client }) {
+  await ack();
+
+  if (!MANAGER_USER_IDS.has(body.user.id)) {
+    await client.chat.postEphemeral({
+      channel: body.container.channel_id,
+      user: body.user.id,
+      text: "⚠️ Only managers can mark payment as complete.",
+    });
+    return;
+  }
+
+  const channelId = body.container.channel_id;
+  const messageTs = body.container.message_ts;
+  const threadTs = body.container.thread_ts || null;
+  const lookupTs = threadTs || messageTs;
+
+  const row = getConfirmedOrderRow(channelId, lookupTs);
+  if (!row) {
+    await client.chat.postEphemeral({
+      channel: channelId,
+      user: body.user.id,
+      text: "⚠️ Order not found — please try again.",
+    });
+    return;
+  }
+
+  const order = row.order;
+  order.paymentComplete = true;
+  order.paymentCompletedBy = body.user.id;
+
+  // Update OTP message status before persisting so otpSlackBlocks stays in sync.
+  if (order.otpSlackChannel && order.otpSlackMessageTs) {
+    const newBlocks = await _updateOtpMessageStatus(
+      client,
+      order,
+      `✅  *Payment complete — <@${body.user.id}>*`,
+    );
+    if (newBlocks) order.otpSlackBlocks = newBlocks;
+  }
+
+  updateConfirmedOrder(channelId, lookupTs, order);
+
+  const resolvedBy = row.confirmedBy;
+  await client.chat.update({
+    channel: channelId,
+    ts: messageTs,
+    text: `✅ Order confirmed${order.orderNumber ? " · Zupa: " + order.orderNumber : ""}${order.clientReference ? " · Ref: " + order.clientReference : ""}`,
+    blocks: buildConfirmationBlocks(order, order.orderNumber, resolvedBy),
+  });
+}
+
 // ── Startup: restore pending orders from SQLite ───────────────────────────────
 
 async function restorePendingOrders(client) {
@@ -3136,5 +3188,6 @@ module.exports = {
   handleLinkReceiptBtn,
   handleReceiptLookupSubmit,
   handleConfirmReceiptLink,
+  handleMarkPaymentComplete,
   clearExpiredPendingOrders,
 };

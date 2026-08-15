@@ -611,7 +611,7 @@ function buildConfirmationBlocks(order, orderNumber, confirmedBy) {
     });
   }
 
-  // ── Linked receipts + Link button (OTP orders only) ───────────────────────
+  // ── Linked receipts + Link / Complete buttons (OTP orders only) ──────────
   if (order.otpOverride) {
     for (const r of order.linkedReceipts || []) {
       const parts = [];
@@ -624,20 +624,46 @@ function buildConfirmationBlocks(order, orderNumber, confirmedBy) {
         elements: [{ type: "mrkdwn", text: `🧾  *Receipt linked* — ${parts.join("  ·  ")}` }],
       });
     }
-    const btnLabel =
-      order.linkedReceipts && order.linkedReceipts.length > 0
-        ? "🧾 Link Another Receipt"
-        : "🧾 Link Payment Receipt";
-    blocks.push({
-      type: "actions",
-      elements: [
-        {
-          type: "button",
-          text: { type: "plain_text", text: btnLabel },
-          action_id: "link_receipt_btn",
-        },
-      ],
-    });
+
+    if (order.paymentComplete) {
+      const completedBy = order.paymentCompletedBy
+        ? `  ·  <@${order.paymentCompletedBy}>`
+        : "";
+      blocks.push({
+        type: "context",
+        elements: [{ type: "mrkdwn", text: `✅  *Payment complete*${completedBy}` }],
+      });
+    } else {
+      const btnLabel =
+        order.linkedReceipts && order.linkedReceipts.length > 0
+          ? "🧾 Link Another Receipt"
+          : "🧾 Link Payment Receipt";
+      blocks.push({
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: { type: "plain_text", text: btnLabel },
+            action_id: "link_receipt_btn",
+          },
+          {
+            type: "button",
+            text: { type: "plain_text", text: "✅ Mark as Complete" },
+            style: "primary",
+            action_id: "mark_payment_complete",
+            confirm: {
+              title: { type: "plain_text", text: "Mark payment as complete?" },
+              text: {
+                type: "mrkdwn",
+                text: "This will close the receipt linking flow. Use this when all receipts are linked or payment was made outside the system (e.g. cash).",
+              },
+              confirm: { type: "plain_text", text: "Yes, mark complete" },
+              deny: { type: "plain_text", text: "Cancel" },
+            },
+          },
+        ],
+      });
+    }
   }
 
   return blocks;
