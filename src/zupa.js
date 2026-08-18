@@ -209,7 +209,7 @@ async function requestOverrideOtp(clientReference, order = {}, slackThreadLink =
   if (slackThreadLink) body.slackThreadLink = slackThreadLink;
 
   const { status, data } = await paymentFetch("payment/order/override-otp", body);
-  if (status === 200 && data.success) return true;
+  if (status === 200 && data.success) return data.slackMessages || [];
   throw new Error(data.message || `OTP request failed (HTTP ${status})`);
 }
 

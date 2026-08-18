@@ -4,6 +4,13 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: "1.12.0",
+    notes: [
+      "OTP authorize button now updates all managers' DM notifications simultaneously — when any manager authorises, every manager's OTP message switches from the Authorize button to the ✅ Authorised badge",
+      "Subsequent status updates (⏳ Receipt not yet linked, 🧾 Receipt linked, ✅ Payment complete) are also sent to all managers' messages so the full payment lifecycle is visible to the whole management team",
+    ],
+  },
+  {
     version: "1.11.0",
     notes: [
       "Mark as Complete button added to OTP order confirmation cards — managers can close the receipt linking flow once all receipts are linked or payment was made outside the system (e.g. cash)",

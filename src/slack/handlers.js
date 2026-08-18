@@ -802,8 +802,8 @@ async function executePush(order, confirmedBy, channelId, ts, client, threadTs =
     blocks: buildConfirmationBlocks(order, pushResult.orderNumber, confirmedBy),
   });
 
-  // Update the manager's OTP Slack message to show receipt is still pending.
-  if (order.otpOverride && order.otpSlackChannel && order.otpSlackMessageTs) {
+  // Update all managers' OTP Slack messages to show receipt is still pending.
+  if (order.otpOverride && order.otpSlackMessages?.length > 0) {
     const newBlocks = await _updateOtpMessageStatus(client, order, "⏳  *Receipt not yet linked*");
     if (newBlocks) {
       order.otpSlackBlocks = newBlocks;
@@ -2433,12 +2433,16 @@ async function handleRequestOtp({ ack, body, client }) {
   order.otpRequestedBy = body.user.id;
   saveOrder(channelId, ts, order);
 
+  let slackMessages = [];
   try {
-    await requestOverrideOtp(order.clientReference, order, slackThreadLink);
+    slackMessages = await requestOverrideOtp(order.clientReference, order, slackThreadLink);
   } catch (err) {
     await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: `⚠️ Could not send OTP: ${err.message}` });
     return;
   }
+
+  order.otpSlackMessages = slackMessages;
+  saveOrder(channelId, ts, order);
 
   // Update message to OTP-pending state so mobile users can re-open the modal
   // without resending (Enter OTP button re-opens; Resend OTP button explicitly resends)
@@ -2722,31 +2726,41 @@ async function handleOtpAuthorize({ ack, body, client }) {
     return;
   }
 
-  // Mark the OTP Slack message as authorized so all managers can see it's been handled.
-  // Strip the Authorize button and append an "Authorized" badge — no Zupa change needed.
-  let authorisedBlocks = null;
-  if (otpChannelId && otpMessageTs) {
-    const originalBlocks = body.message?.blocks || [];
-    authorisedBlocks = [
-      ...originalBlocks.filter((b) => b.type !== "actions"),
-      {
-        type: "context",
-        elements: [{ type: "mrkdwn", text: `✅  *Authorised by <@${authorizerId}>*` }],
-      },
-    ];
-    await client.chat.update({
-      channel: otpChannelId,
-      ts: otpMessageTs,
-      blocks: authorisedBlocks,
-      text: "Payment Override OTP Request — Authorised",
-    }).catch(() => {});
+  // Build the authorised blocks from the clicking manager's message as the template.
+  // All managers received the same OTP message content, so this works for all.
+  const originalBlocks = body.message?.blocks || [];
+  const authorisedBlocks = [
+    ...originalBlocks.filter((b) => b.type !== "actions"),
+    {
+      type: "context",
+      elements: [{ type: "mrkdwn", text: `✅  *Authorised by <@${authorizerId}>*` }],
+    },
+  ];
+
+  // Find the pending order to get all managers' message coordinates.
+  const found = findOrderByClientRef(clientReference);
+
+  // Update every manager's OTP DM. Fall back to just the clicking manager's message
+  // if the order isn't in memory (e.g. after a bot restart).
+  const messagesToUpdate =
+    found?.order?.otpSlackMessages?.length > 0
+      ? found.order.otpSlackMessages
+      : otpChannelId && otpMessageTs
+        ? [{ channelId: otpChannelId, messageTs: otpMessageTs }]
+        : [];
+
+  for (const msg of messagesToUpdate) {
+    await client.chat
+      .update({
+        channel: msg.channelId,
+        ts: msg.messageTs,
+        blocks: authorisedBlocks,
+        text: "Payment Override OTP Request — Authorised",
+      })
+      .catch((err) => console.error(`[handleOtpAuthorize] update channel=${msg.channelId}`, err.message));
   }
 
-  // Find the pending order in memory and update the review card.
-  const found = findOrderByClientRef(clientReference);
   if (!found) {
-    // Bot may have restarted; authorization is recorded on the backend but the CSR
-    // needs to re-enter the OTP manually in the order thread.
     if (otpChannelId) {
       await client.chat.postEphemeral({
         channel: otpChannelId,
@@ -2760,16 +2774,9 @@ async function handleOtpAuthorize({ ack, body, client }) {
   const { channelId, ts, order } = found;
   order.otpOverride = true;
   order.otpAuthorizedBy = authorizerId;
-  // Store the OTP message coords AND current blocks so later updates don't need an API fetch.
-  if (otpChannelId && otpMessageTs) {
-    order.otpSlackChannel = otpChannelId;
-    order.otpSlackMessageTs = otpMessageTs;
-    order.otpSlackBlocks = authorisedBlocks;
-  }
+  order.otpSlackBlocks = authorisedBlocks;
   saveOrder(channelId, ts, order);
 
-  // Replace the OTP-pending card with the full review + override badge so the CSR
-  // sees the "🔐 Authorised" status and the Confirm button immediately.
   await client.chat.update({
     channel: channelId,
     ts,
@@ -2778,30 +2785,30 @@ async function handleOtpAuthorize({ ack, body, client }) {
   }).catch(() => {});
 }
 
-// Updates the OTP Slack message status line using the blocks already stored on the order
-// (avoids a conversations.history API call). Returns the new blocks so the caller can
-// persist them back onto the order for the next update.
+// Updates all managers' OTP Slack messages with a new status line.
+// Uses the blocks stored on the order (otpSlackBlocks) as the base template to avoid
+// a conversations.history API call. Returns the new blocks so callers can persist them.
 async function _updateOtpMessageStatus(client, order, statusText) {
-  if (!order.otpSlackChannel || !order.otpSlackMessageTs) return null;
+  if (!order.otpSlackMessages || order.otpSlackMessages.length === 0) return null;
   const base = order.otpSlackBlocks || [];
   const cleanedBlocks = base.filter((b) => {
     if (b.type !== "context") return true;
     const text = b.elements?.[0]?.text || "";
-    return !text.startsWith("⏳") && !text.startsWith("🧾");
+    return !text.startsWith("⏳") && !text.startsWith("🧾") && !text.startsWith("✅  *Payment complete");
   });
   const newBlocks = [
     ...cleanedBlocks,
     { type: "context", elements: [{ type: "mrkdwn", text: statusText }] },
   ];
-  try {
-    await client.chat.update({
-      channel: order.otpSlackChannel,
-      ts: order.otpSlackMessageTs,
-      blocks: newBlocks,
-      text: "Payment Override OTP Request",
-    });
-  } catch (err) {
-    console.error("[_updateOtpMessageStatus]", err.message);
+  for (const msg of order.otpSlackMessages) {
+    await client.chat
+      .update({
+        channel: msg.channelId,
+        ts: msg.messageTs,
+        blocks: newBlocks,
+        text: "Payment Override OTP Request",
+      })
+      .catch((err) => console.error(`[_updateOtpMessageStatus] channel=${msg.channelId}`, err.message));
   }
   return newBlocks;
 }
@@ -2969,8 +2976,8 @@ async function handleConfirmReceiptLink({ ack, body, client }) {
     blocks: buildConfirmationBlocks(order, order.orderNumber, resolvedBy),
   });
 
-  // Update the manager's OTP Slack message to reflect receipt link status.
-  if (order.otpSlackChannel && order.otpSlackMessageTs) {
+  // Update all managers' OTP Slack messages to reflect receipt link status.
+  if (order.otpSlackMessages?.length > 0) {
     const count = order.linkedReceipts.length;
     const linker = `<@${body.user.id}>`;
     const statusText =
@@ -3032,8 +3039,8 @@ async function handleMarkPaymentComplete({ ack, body, client }) {
   order.paymentComplete = true;
   order.paymentCompletedBy = body.user.id;
 
-  // Update OTP message status before persisting so otpSlackBlocks stays in sync.
-  if (order.otpSlackChannel && order.otpSlackMessageTs) {
+  // Update all managers' OTP Slack messages before persisting so otpSlackBlocks stays in sync.
+  if (order.otpSlackMessages?.length > 0) {
     const newBlocks = await _updateOtpMessageStatus(
       client,
       order,
