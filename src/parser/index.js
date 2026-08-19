@@ -170,6 +170,7 @@ async function parse(rawMessage) {
     customer: seg.customer,
     recipient,
     receiptName: seg.receiptName || null,
+    couponCode: seg.couponCode || null,
     fulfillment: updatedFulfillment,
     items,
     statedTotal: seg.statedTotal,

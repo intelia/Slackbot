@@ -40,6 +40,7 @@ Extraction rules:
 - Notes: special instructions like "please prioritize", "urgent", "extra spicy", "no sugar". Short noise phrases (greetings, "hi", "Hello", "eye -", single orphan letters) go into notes only if they could be instructions; otherwise ignore.
 - Ignore lines that are clearly noise: orphan letters/characters, "eye -" without context, greetings with no content.
 - receiptName: if the message contains a name explicitly identified as the name on the payment transfer/receipt/bank statement — e.g. "name on receipt: John Okafor", "payment name: Ada", "sent from: Emeka Adeyemi", "transfer name: Chidi", "bank name: Oluwaseun", "name on transfer: Bisi" — extract it here. This is ONLY the bank transfer sender name when stated separately from the customer name; it is used for payment matching only and should not affect customer or recipient fields. Return null if not mentioned.
+- couponCode: if the message mentions a discount/promo coupon — e.g. "coupon FREE-DELV", "coupon code: XYZ123", "promo code XYZ123", "use code XYZ123" — extract just the code itself (e.g. "FREE-DELV"), preserving its original casing. Return null if no coupon is mentioned.
 
 Return ONLY the JSON object matching the schema. Do not include explanation.`;
 
@@ -124,6 +125,7 @@ const RESPONSE_FORMAT = {
         },
         notes: { type: "array", items: { type: "string" } },
         receiptName: { anyOf: [{ type: "string" }, { type: "null" }] },
+        couponCode: { anyOf: [{ type: "string" }, { type: "null" }] },
       },
       required: [
         "customer",
@@ -134,6 +136,7 @@ const RESPONSE_FORMAT = {
         "recipient",
         "notes",
         "receiptName",
+        "couponCode",
       ],
       additionalProperties: false,
     },

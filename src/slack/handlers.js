@@ -715,7 +715,10 @@ function verifyPaymentBackground(client, order, channelId, ts) {
     ? (order.recipient?.name || order.customer?.name || customerName)
     : (order.recipient?.name || customerName);
 
-  verifyPayment(customerName, recipientName, order.orderTotal)
+  verifyPayment(customerName, recipientName, order.orderTotal, {
+    deliveryPrice: order.fulfillment?.fee,
+    couponCode: order.couponCode,
+  })
     .then((match) => {
       const current = getOrder(channelId, ts);
       if (!current) return; // order was confirmed/rejected before we finished
@@ -871,6 +874,7 @@ async function handleConfirmOrder({ ack, body, action, client }) {
         customerName,
         recipientName,
         order.orderTotal,
+        { deliveryPrice: order.fulfillment?.fee, couponCode: order.couponCode },
       );
     } catch (err) {
       console.log(`error verifying payment ${err}`);
@@ -2573,7 +2577,10 @@ async function handlePaymentNameSubmit({ ack, body, view, client }) {
 
   let match;
   try {
-    match = await verifyPayment(paymentName, paymentName, order.orderTotal);
+    match = await verifyPayment(paymentName, paymentName, order.orderTotal, {
+      deliveryPrice: order.fulfillment?.fee,
+      couponCode: order.couponCode,
+    });
   } catch (err) {
     await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: `⚠️ Payment check failed: ${err.message}` });
     return;

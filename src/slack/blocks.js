@@ -324,6 +324,7 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
       text: [
         `Items:  *${fmt(order.itemsSubtotal)}*`,
         `Delivery:  *${fmt(order.fulfillment.fee || 0)}*`,
+        ...(order.couponCode ? [`Coupon:  *${order.couponCode}*`] : []),
         `─────────────────`,
         `TOTAL:  *${fmt(order.orderTotal)}*`,
         reconcText,

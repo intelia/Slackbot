@@ -45,6 +45,7 @@ function buildZupaPayload(order) {
         price: item.unitPrice,
       })),
       ...(order.scheduledDate && { deliveryDate: order.scheduledDate }),
+      ...(order.couponCode && { couponCode: order.couponCode }),
       ...(order.paymentData?.combined
         ? {
             paymentReference: (order.paymentData.payments || []).map(
@@ -169,12 +170,13 @@ async function paymentFetch(endpoint, body) {
 }
 
 // Returns payment object if matched, null if no match (404), throws on other errors.
-async function verifyPayment(customerName, recipientName, amount) {
-  const { status, data } = await paymentFetch("payment/order/verify-payment", {
-    customerName,
-    recipientName,
-    amount,
-  });
+// opts: { deliveryPrice, couponCode } — only sent for full-order verification (not modification/adjustment deltas).
+async function verifyPayment(customerName, recipientName, totalPrice, opts = {}) {
+  const body = { customerName, recipientName, totalPrice };
+  if (opts.deliveryPrice != null) body.deliveryPrice = opts.deliveryPrice;
+  if (opts.couponCode) body.couponCode = opts.couponCode;
+
+  const { status, data } = await paymentFetch("payment/order/verify-payment", body);
   if (status === 200 && data.matched) return data;
   if (status === 404) return null;
   throw new Error(

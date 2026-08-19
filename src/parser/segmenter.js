@@ -74,6 +74,11 @@ function parseTotalLine(line) {
   return { amount, name: nameMatch ? nameMatch[1].trim() : null };
 }
 
+function parseCouponLine(line) {
+  const m = line.match(/\b(?:coupon|promo)(?:\s*code)?\s*[:\-]?\s*([A-Za-z0-9][A-Za-z0-9\-]{2,})\b/i);
+  return m ? m[1].toUpperCase() : null;
+}
+
 function parseFulfillmentLine(line) {
   const lower = line.toLowerCase();
   if (/pick\s*up|pickup/.test(lower)) {
@@ -147,6 +152,7 @@ function segment(rawMessage) {
     fulfillment: { type: null, address: null, branch: null, statedFee: null },
     itemLines: [],
     statedTotal: null,
+    couponCode: null,
     noise: [],
     notes: [],
   };
@@ -168,6 +174,9 @@ function segment(rawMessage) {
 
     const ig = parseInstagram(line);
     if (ig) { classified.push({ type: 'instagram', line, ig }); continue; }
+
+    const coupon = parseCouponLine(line);
+    if (coupon) { classified.push({ type: 'coupon', line, coupon }); continue; }
 
     const total = parseTotalLine(line);
     if (total) { classified.push({ type: 'total', line, total }); continue; }
@@ -194,6 +203,7 @@ function segment(rawMessage) {
     if (c.type === 'instagram') { result.customer.instagram = c.ig; continue; }
     if (c.type === 'note') { result.notes.push(c.line); continue; }
     if (c.type === 'noise') { result.noise.push(c.line); continue; }
+    if (c.type === 'coupon') { result.couponCode = c.coupon; continue; }
 
     if (c.type === 'total') {
       result.statedTotal = c.total.amount;
