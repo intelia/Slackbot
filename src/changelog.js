@@ -4,6 +4,13 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: "1.13.0",
+    notes: [
+      "Coupon code support — a coupon mentioned in the order message (e.g. \"coupon LEKKIFREE\") is now extracted, shown on the review card, and sent in both payment verification and the order pushed to Zupa",
+      "LEKKIFREE is the free-delivery coupon — it only applies to orders delivering within Lekki",
+    ],
+  },
+  {
     version: "1.12.0",
     notes: [
       "OTP authorize button now updates all managers' DM notifications simultaneously — when any manager authorises, every manager's OTP message switches from the Authorize button to the ✅ Authorised badge",
