@@ -146,7 +146,7 @@ const modStateMap = new Map();
 // Key: `${channelId}:${warningMessageTs}` → { channelId, rawText, threadTs? }
 const pendingParseMap = new Map();
 
-// ── In-memory daily-report state (backs the "View Unconfirmed Orders" drill-down) ─
+// ── In-memory daily-report state (backs the "Orders with Unconfirmed Payment" drill-down) ─
 // Key: `${channelId}:${reportMessageTs}` → { unconfirmed, lookup, dateLabel }
 const dailyReportStateMap = new Map();
 
@@ -1972,7 +1972,7 @@ async function handleDailySummaryCommand({ command, ack, client }) {
   }
 }
 
-// ── Daily report: view unconfirmed orders ─────────────────────────────────────
+// ── Daily report: view orders with unconfirmed payment ────────────────────────
 
 async function handleShowUnconfirmedOrders({ ack, body, client }) {
   await ack();
@@ -2021,7 +2021,7 @@ async function handleUnconfirmedOrdersPost({ ack, body, view, client }) {
   await client.chat.postMessage({
     channel: channelId,
     thread_ts: reportTs,
-    text: `📋 Unconfirmed Orders — ${state.dateLabel}`,
+    text: `📋 Orders with Unconfirmed Payment — ${state.dateLabel}`,
     blocks: buildUnconfirmedOrdersBlocks(state.unconfirmed, enriched, state.dateLabel),
   });
 }

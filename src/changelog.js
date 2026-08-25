@@ -6,9 +6,9 @@ const CHANGELOG = [
   {
     version: "1.16.0",
     notes: [
-      "/daily-summary now shows the count and total amount of unconfirmed orders alongside the rest of the order summary",
-      '"View Unconfirmed Orders" button added to the daily report — opens a list showing each unconfirmed order\'s amount, the CSR who posted it, and (for OTP-overridden orders) who authorised the OTP',
-      "The unconfirmed orders list can also be posted to the channel as a message from that same view, for the team to see",
+      "/daily-summary now shows the count and total amount of orders whose payment hasn't been confirmed yet, alongside the rest of the order summary",
+      '"View Orders with Unconfirmed Payment" button added to the daily report — opens a list showing each such order\'s amount, the CSR who posted it, and (for OTP-overridden orders) who authorised the OTP',
+      "That list can also be posted to the channel as a message from the same view, for the team to see",
     ],
   },
   {

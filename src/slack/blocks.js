@@ -1893,7 +1893,7 @@ function buildDailyReportBlocks(
         `• Orders Completed On Time: *${onTime}*  (${pct}%)`,
         `• Delayed Orders: *${delayed}*`,
         `• Avg Processing Time: *${avgMins}*`,
-        `• Unconfirmed Orders: *${unconfirmedTotal}*  (${fmt(unconfirmed.totalAmount)})`,
+        `• Orders with Unconfirmed Payment: *${unconfirmedTotal}*  (${fmt(unconfirmed.totalAmount)})`,
       ].join("\n"),
     },
   });
@@ -1938,7 +1938,7 @@ function buildDailyReportBlocks(
           type: "button",
           text: {
             type: "plain_text",
-            text: `📋  View Unconfirmed Orders (${unconfirmedTotal})`,
+            text: `📋  View Orders with Unconfirmed Payment (${unconfirmedTotal})`,
           },
           action_id: "show_unconfirmed_orders",
         },
@@ -1950,8 +1950,8 @@ function buildDailyReportBlocks(
   return blocks;
 }
 
-// ── Unconfirmed orders — shared list renderer (modal + channel post) ──────────
-// enrichedOrders: kitchen-API unconfirmed orders merged with our own CSR/OTP records.
+// ── Orders with unconfirmed payment — shared list renderer (modal + channel post) ─
+// enrichedOrders: kitchen-API orders (payment not yet confirmed) merged with our own CSR/OTP records.
 function buildUnconfirmedOrdersBlocks(unconfirmed, enrichedOrders, dateLabel) {
   const u = unconfirmed || {};
   const blocks = [
@@ -1959,7 +1959,7 @@ function buildUnconfirmedOrdersBlocks(unconfirmed, enrichedOrders, dateLabel) {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*📋  Unconfirmed Orders*  _(${dateLabel})_\n${u.total ?? 0} order(s) · ${fmt(u.totalAmount)}`,
+        text: `*📋  Orders with Unconfirmed Payment*  _(${dateLabel})_\n${u.total ?? 0} order(s) awaiting payment confirmation · ${fmt(u.totalAmount)}`,
       },
     },
     { type: "divider" },
@@ -1968,7 +1968,7 @@ function buildUnconfirmedOrdersBlocks(unconfirmed, enrichedOrders, dateLabel) {
   if (!enrichedOrders || enrichedOrders.length === 0) {
     blocks.push({
       type: "section",
-      text: { type: "mrkdwn", text: "_No unconfirmed orders._" },
+      text: { type: "mrkdwn", text: "_No orders with unconfirmed payment._" },
     });
     return blocks;
   }
@@ -2008,7 +2008,7 @@ function buildUnconfirmedOrdersModal(privateMetadata, unconfirmed, enrichedOrder
     callback_id: "unconfirmed_orders_post",
     private_metadata:
       typeof privateMetadata === "string" ? privateMetadata : JSON.stringify(privateMetadata),
-    title: { type: "plain_text", text: "Unconfirmed Orders" },
+    title: { type: "plain_text", text: "Unconfirmed Payments" },
     submit: { type: "plain_text", text: "Post to Channel" },
     close: { type: "plain_text", text: "Close" },
     blocks: buildUnconfirmedOrdersBlocks(unconfirmed, enrichedOrders, dateLabel),
