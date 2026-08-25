@@ -730,6 +730,26 @@ function buildZonePickerModal(currentAddress, privateMetadata) {
     blocks: [
       {
         type: "input",
+        block_id: "address_input",
+        label: { type: "plain_text", text: "Delivery address" },
+        optional: true,
+        element: {
+          type: "plain_text_input",
+          action_id: "address_text",
+          placeholder: {
+            type: "plain_text",
+            text: "Street address / landmark for the new zone",
+          },
+          ...(currentAddress ? { initial_value: currentAddress } : {}),
+        },
+        hint: {
+          type: "plain_text",
+          text: "Changing the zone usually means the address changes too — update it here.",
+        },
+      },
+      { type: "divider" },
+      {
+        type: "input",
         block_id: "named_zone_select",
         label: { type: "plain_text", text: "Search delivery zone" },
         optional: true,
@@ -792,7 +812,7 @@ function buildZonePickerModal(currentAddress, privateMetadata) {
 
 // ── Mod: city picker modal (mirrors zone picker, mod-specific IDs) ────────────
 
-function buildModCityPickerModal(privateMetadata) {
+function buildModCityPickerModal(privateMetadata, currentAddress) {
   const cities = store.getCities();
   const rideHailOptions = (cities.rideHailTiers || []).map((t) => ({
     text: { type: "plain_text", text: trunc(`${t.name} — ${fmt(t.price)}`, 75) },
@@ -810,6 +830,26 @@ function buildModCityPickerModal(privateMetadata) {
     submit: { type: "plain_text", text: "Apply" },
     close: { type: "plain_text", text: "Cancel" },
     blocks: [
+      {
+        type: "input",
+        block_id: "mod_address_input",
+        label: { type: "plain_text", text: "Delivery address" },
+        optional: true,
+        element: {
+          type: "plain_text_input",
+          action_id: "mod_address_text",
+          placeholder: {
+            type: "plain_text",
+            text: "Street address / landmark for the new zone",
+          },
+          ...(currentAddress ? { initial_value: currentAddress } : {}),
+        },
+        hint: {
+          type: "plain_text",
+          text: "Changing the city usually means the address changes too — update it here.",
+        },
+      },
+      { type: "divider" },
       {
         type: "input",
         block_id: "mod_named_zone_select",
@@ -1174,24 +1214,24 @@ function buildModReviewBlocks(mod, confirmedOrder) {
 
   // ── Zone change — always show picker when an address was detected ─────────
   if (mod.newAddress) {
-    const prev =
-      confirmedOrder.fulfillment?.zoneName ||
+    const prevAddress =
       confirmedOrder.fulfillment?.address ||
+      confirmedOrder.fulfillment?.zoneName ||
       "?";
     const matchText = mod.newZoneId
-      ? `✅  Matched: *${mod.newZoneName}*  ${fmt(mod.newFee)}  (${mod.newBranch || ""})`
-      : `⚠️  No zone matched for _"${mod.newAddress}"_ — search below`;
+      ? `✅  City: *${mod.newZoneName}*  ${fmt(mod.newFee)}  (${mod.newBranch || ""})`
+      : `⚠️  No city auto-matched — search below`;
     blocks.push({
       type: "section",
       block_id: "mod_zone_search",
       text: {
         type: "mrkdwn",
-        text: `*ADDRESS CHANGE* _(was: ${prev})_\n${matchText}`,
+        text: `*ADDRESS CHANGE* _(was: ${prevAddress})_\n📍  New address: *${mod.newAddress}*\n${matchText}`,
       },
       accessory: {
         type: "external_select",
         action_id: "mod_zone_select",
-        placeholder: { type: "plain_text", text: "Confirm or change zone…" },
+        placeholder: { type: "plain_text", text: "Confirm or change city…" },
         min_query_length: 0,
       },
     });
@@ -1839,6 +1879,8 @@ function buildDailyReportBlocks(
     k.avgProcessingTimeMinutes != null
       ? `${Math.round(k.avgProcessingTimeMinutes)} mins`
       : "—";
+  const unconfirmed = k.unconfirmed || {};
+  const unconfirmedTotal = unconfirmed.total ?? 0;
 
   blocks.push({
     type: "section",
@@ -1851,6 +1893,7 @@ function buildDailyReportBlocks(
         `• Orders Completed On Time: *${onTime}*  (${pct}%)`,
         `• Delayed Orders: *${delayed}*`,
         `• Avg Processing Time: *${avgMins}*`,
+        `• Unconfirmed Orders: *${unconfirmedTotal}*  (${fmt(unconfirmed.totalAmount)})`,
       ].join("\n"),
     },
   });
@@ -1883,10 +1926,93 @@ function buildDailyReportBlocks(
   const cmpText = _buildComparisonText(kitchenData, yesterdayData, "Yesterday");
   if (cmpText) {
     blocks.push({ type: "section", text: { type: "mrkdwn", text: cmpText } });
+    blocks.push({ type: "divider" });
+  }
+
+  if (unconfirmedTotal > 0) {
+    blocks.push({
+      type: "actions",
+      block_id: "daily_report_actions",
+      elements: [
+        {
+          type: "button",
+          text: {
+            type: "plain_text",
+            text: `📋  View Unconfirmed Orders (${unconfirmedTotal})`,
+          },
+          action_id: "show_unconfirmed_orders",
+        },
+      ],
+    });
   }
 
   blocks.push(_footer);
   return blocks;
+}
+
+// ── Unconfirmed orders — shared list renderer (modal + channel post) ──────────
+// enrichedOrders: kitchen-API unconfirmed orders merged with our own CSR/OTP records.
+function buildUnconfirmedOrdersBlocks(unconfirmed, enrichedOrders, dateLabel) {
+  const u = unconfirmed || {};
+  const blocks = [
+    {
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `*📋  Unconfirmed Orders*  _(${dateLabel})_\n${u.total ?? 0} order(s) · ${fmt(u.totalAmount)}`,
+      },
+    },
+    { type: "divider" },
+  ];
+
+  if (!enrichedOrders || enrichedOrders.length === 0) {
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: "_No unconfirmed orders._" },
+    });
+    return blocks;
+  }
+
+  // Chunk 5 orders per block to stay well within Slack's block/character limits.
+  for (let i = 0; i < enrichedOrders.length; i += 5) {
+    const chunk = enrichedOrders.slice(i, i + 5);
+    const lines = chunk.map((o) => {
+      const time = o.createdAt
+        ? new Date(o.createdAt).toLocaleTimeString("en-NG", {
+            timeZone: "Africa/Lagos",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "—";
+      const postedBy = o.parsedBy || "—";
+      const authorizedBy = o.otpOverride && o.otpAuthorizedBy
+        ? `<@${o.otpAuthorizedBy}>`
+        : "—";
+      return [
+        `• Order \`${o.orderNumber}\`  —  ${fmt(o.total)}  _(${time})_`,
+        `  Posted by: ${postedBy}   ·   OTP authorized by: ${authorizedBy}`,
+      ].join("\n");
+    });
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: lines.join("\n\n") },
+    });
+  }
+
+  return blocks;
+}
+
+function buildUnconfirmedOrdersModal(privateMetadata, unconfirmed, enrichedOrders, dateLabel) {
+  return {
+    type: "modal",
+    callback_id: "unconfirmed_orders_post",
+    private_metadata:
+      typeof privateMetadata === "string" ? privateMetadata : JSON.stringify(privateMetadata),
+    title: { type: "plain_text", text: "Unconfirmed Orders" },
+    submit: { type: "plain_text", text: "Post to Channel" },
+    close: { type: "plain_text", text: "Close" },
+    blocks: buildUnconfirmedOrdersBlocks(unconfirmed, enrichedOrders, dateLabel),
+  };
 }
 
 // ── Weekly Operations Report ──────────────────────────────────────────────────
@@ -2536,6 +2662,8 @@ module.exports = {
   buildSummaryModal,
   buildSummaryChannelBlocks,
   buildDailyReportBlocks,
+  buildUnconfirmedOrdersBlocks,
+  buildUnconfirmedOrdersModal,
   buildWeeklyReportBlocks,
   buildMonthlyReportBlocks,
   buildPaymentNotFoundBlocks,

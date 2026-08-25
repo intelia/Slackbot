@@ -4,6 +4,28 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: "1.16.0",
+    notes: [
+      "/daily-summary now shows the count and total amount of unconfirmed orders alongside the rest of the order summary",
+      '"View Unconfirmed Orders" button added to the daily report — opens a list showing each unconfirmed order\'s amount, the CSR who posted it, and (for OTP-overridden orders) who authorised the OTP',
+      "The unconfirmed orders list can also be posted to the channel as a message from that same view, for the team to see",
+    ],
+  },
+  {
+    version: "1.15.0",
+    notes: [
+      'Address-change requests in an order\'s thread (e.g. "change address to 27 Olayinka Disu Street, Maryland") now show both the new street address and the matched city in the confirmation card, not just the city',
+      "If no city auto-matches the new address, CSRs can pick one from the list via the zone search or the Change City button before applying",
+      "The final \"Modification applied\" summary now shows the updated address alongside the city and delivery fee",
+    ],
+  },
+  {
+    version: "1.14.0",
+    notes: [
+      "Change Zone / Change Delivery City now include an address field — changing the delivery city usually means the street address changes too, so both are updated together instead of the address being left stale",
+    ],
+  },
+  {
     version: "1.13.0",
     notes: [
       "Coupon code support — a coupon mentioned in the order message (e.g. \"coupon LEKKIFREE\") is now extracted, shown on the review card, and sent in both payment verification and the order pushed to Zupa",

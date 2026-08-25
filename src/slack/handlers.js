@@ -67,6 +67,8 @@ const {
   buildSummaryModal,
   buildSummaryChannelBlocks,
   buildDailyReportBlocks,
+  buildUnconfirmedOrdersBlocks,
+  buildUnconfirmedOrdersModal,
   buildWeeklyReportBlocks,
   buildMonthlyReportBlocks,
   buildAvailabilityModal,
@@ -143,6 +145,33 @@ const modStateMap = new Map();
 // ── In-memory pending-parse state (awaiting duplicate confirmation) ────────────
 // Key: `${channelId}:${warningMessageTs}` → { channelId, rawText, threadTs? }
 const pendingParseMap = new Map();
+
+// ── In-memory daily-report state (backs the "View Unconfirmed Orders" drill-down) ─
+// Key: `${channelId}:${reportMessageTs}` → { unconfirmed, lookup, dateLabel }
+const dailyReportStateMap = new Map();
+
+// Builds clientReference → { parsedBy, otpOverride, otpAuthorizedBy } from our own
+// confirmed-order records, so the kitchen API's unconfirmed list (joined on
+// platformOrderReference === our clientReference) can show who posted/authorized each order.
+function _buildClientRefLookup(orders) {
+  const lookup = {};
+  for (const o of orders) {
+    if (!o.clientReference) continue;
+    lookup[o.clientReference] = {
+      parsedBy: o.parsedBy || null,
+      otpOverride: o.otpOverride || false,
+      otpAuthorizedBy: o.otpAuthorizedBy || null,
+    };
+  }
+  return lookup;
+}
+
+function _enrichUnconfirmedOrders(unconfirmedOrders, lookup) {
+  return (unconfirmedOrders || []).map((o) => ({
+    ...o,
+    ...(lookup[o.platformOrderReference] || {}),
+  }));
+}
 
 // Re-run reconciliation after an item/zone change and update aggregates
 function reReconcile(order) {
@@ -616,6 +645,9 @@ async function handleZonePickerSubmit({ ack, body, view, client }) {
     view.state.values.ride_hail_select?.ride_hail_input?.selected_option?.value;
   const pickupId =
     view.state.values.pickup_select?.pickup_input?.selected_option?.value;
+  const addressText = (
+    view.state.values.address_input?.address_text?.value || ""
+  ).trim();
 
   if (namedZoneId) {
     const zone = getZoneById(namedZoneId);
@@ -651,6 +683,10 @@ async function handleZonePickerSubmit({ ack, body, view, client }) {
       order.fulfillment.resolved = true;
     }
   }
+
+  // Zone/city changes almost always mean the address changes too —
+  // apply whatever the CSR typed (or cleared) in the address field.
+  order.fulfillment.address = addressText || null;
 
   reReconcile(order);
   saveOrder(channelId, ts, order);
@@ -1103,7 +1139,9 @@ async function applyModification(client, channelId, modMessageTs, modifiedBy) {
   const phoneLine = mod.newPhone ? `  📱  Phone: ${mod.newPhone}` : null;
   const addedLines = mod.addItems.map((i) => `  ➕  ${i.productName} · ${i.sizeName} ×${i.qty} — ${fmt(i.lineTotal)}`);
   const removedLines = mod.removeItems.map((i) => `  ➖  ${i.productName} · ${i.sizeName} ×${i.qty}`);
-  const addressLine = mod.newZoneId ? `  📍  ${confirmedOrder.fulfillment.zoneName}` : null;
+  const addressLine = mod.newZoneId
+    ? `  📍  ${confirmedOrder.fulfillment.address}  ·  ${confirmedOrder.fulfillment.zoneName}  (${fmt(confirmedOrder.fulfillment.fee)})`
+    : null;
   const dateLine = mod.newScheduledDate ? `  📅  Delivery date: ${mod.newScheduledDate}` : null;
   const recipientLine = mod.newRecipient && (mod.newRecipient.name || mod.newRecipient.phone)
     ? `  📦  Recipient: ${[mod.newRecipient.name, mod.newRecipient.phone].filter(Boolean).join("  ·  ")}`
@@ -1504,11 +1542,19 @@ async function handleModCityPickerBtn({ ack, body, client }) {
 
   const channelId = body.container.channel_id;
   const modMessageTs = body.container.message_ts;
+  const modState = modStateMap.get(stateKey(channelId, modMessageTs));
+  const currentAddress = modState
+    ? modState.mod.newAddress ||
+      modState.confirmedOrder.fulfillment?.address ||
+      modState.confirmedOrder.fulfillment?.zoneName ||
+      ""
+    : "";
 
   await client.views.open({
     trigger_id: body.trigger_id,
     view: buildModCityPickerModal(
       JSON.stringify({ channelId, modMessageTs, threadTs: body.container.thread_ts || null }),
+      currentAddress,
     ),
   });
 }
@@ -1526,6 +1572,9 @@ async function handleModCityPickerSubmit({ ack, body, view, client }) {
   const namedZoneId = view.state.values.mod_named_zone_select?.mod_zone_search_select?.selected_option?.value;
   const rideHailId  = view.state.values.mod_ride_hail_select?.mod_ride_hail_input?.selected_option?.value;
   const pickupId    = view.state.values.mod_pickup_select?.mod_pickup_input?.selected_option?.value;
+  const addressText = (
+    view.state.values.mod_address_input?.mod_address_text?.value || ""
+  ).trim();
 
   const cities = store.getCities();
 
@@ -1536,7 +1585,7 @@ async function handleModCityPickerSubmit({ ack, body, view, client }) {
       modState.mod.newZoneName = zone.name;
       modState.mod.newBranch   = zone.branch;
       modState.mod.newFee      = zone.price;
-      modState.mod.newAddress  = zone.name;
+      modState.mod.newAddress  = addressText || zone.name;
     }
   } else if (rideHailId) {
     const tier = (cities.rideHailTiers || []).find((t) => t.id === rideHailId);
@@ -1545,7 +1594,7 @@ async function handleModCityPickerSubmit({ ack, body, view, client }) {
       modState.mod.newZoneName = tier.name;
       modState.mod.newBranch   = tier.branch;
       modState.mod.newFee      = tier.price;
-      modState.mod.newAddress  = tier.name;
+      modState.mod.newAddress  = addressText || tier.name;
     }
   } else if (pickupId) {
     const row = (cities.pickupRows || []).find((r) => r.id === pickupId);
@@ -1554,7 +1603,7 @@ async function handleModCityPickerSubmit({ ack, body, view, client }) {
       modState.mod.newZoneName = row.name;
       modState.mod.newBranch   = /opebi/i.test(row.name) ? "Opebi" : /mainland/i.test(row.name) ? "Mainland" : "Lekki";
       modState.mod.newFee      = 0;
-      modState.mod.newAddress  = row.name;
+      modState.mod.newAddress  = addressText || row.name;
     }
   } else {
     return; // nothing selected
@@ -1893,7 +1942,7 @@ async function handleDailySummaryCommand({ command, ack, client }) {
       return;
     }
 
-    await client.chat.postMessage({
+    const posted = await client.chat.postMessage({
       channel: channelId,
       text: `📊 Daily Operations Report — ${dateLabel}`,
       blocks: buildDailyReportBlocks(
@@ -1903,6 +1952,14 @@ async function handleDailySummaryCommand({ command, ack, client }) {
         dateLabel,
       ),
     });
+
+    if (kitchenData?.unconfirmed?.total > 0 && posted.ts) {
+      dailyReportStateMap.set(stateKey(channelId, posted.ts), {
+        unconfirmed: kitchenData.unconfirmed,
+        lookup: _buildClientRefLookup(allOrders),
+        dateLabel,
+      });
+    }
   } catch (err) {
     console.error("[handleDailySummaryCommand]", err);
     await client.chat
@@ -1913,6 +1970,60 @@ async function handleDailySummaryCommand({ command, ack, client }) {
       })
       .catch(() => {});
   }
+}
+
+// ── Daily report: view unconfirmed orders ─────────────────────────────────────
+
+async function handleShowUnconfirmedOrders({ ack, body, client }) {
+  await ack();
+
+  const channelId = body.container.channel_id;
+  const ts = body.container.message_ts;
+  const state = dailyReportStateMap.get(stateKey(channelId, ts));
+
+  if (!state) {
+    await ephem(client, {
+      channel: channelId,
+      user: body.user.id,
+      text: "⚠️ This report has expired (bot may have restarted). Please rerun /daily-summary.",
+    });
+    return;
+  }
+
+  const enriched = _enrichUnconfirmedOrders(state.unconfirmed.orders, state.lookup);
+  await client.views.open({
+    trigger_id: body.trigger_id,
+    view: buildUnconfirmedOrdersModal(
+      JSON.stringify({ channelId, reportTs: ts }),
+      state.unconfirmed,
+      enriched,
+      state.dateLabel,
+    ),
+  });
+}
+
+async function handleUnconfirmedOrdersPost({ ack, body, view, client }) {
+  await ack({ response_action: "clear" });
+
+  const { channelId, reportTs } = JSON.parse(view.private_metadata || "{}");
+  const state = dailyReportStateMap.get(stateKey(channelId, reportTs));
+
+  if (!state) {
+    await ephem(client, {
+      channel: channelId,
+      user: body.user.id,
+      text: "⚠️ This report has expired (bot may have restarted). Please rerun /daily-summary.",
+    });
+    return;
+  }
+
+  const enriched = _enrichUnconfirmedOrders(state.unconfirmed.orders, state.lookup);
+  await client.chat.postMessage({
+    channel: channelId,
+    thread_ts: reportTs,
+    text: `📋 Unconfirmed Orders — ${state.dateLabel}`,
+    blocks: buildUnconfirmedOrdersBlocks(state.unconfirmed, enriched, state.dateLabel),
+  });
 }
 
 // ── /weekly-summary ───────────────────────────────────────────────────────────
@@ -3178,6 +3289,8 @@ module.exports = {
   handleSummaryCommand,
   handleSummarySubmit,
   handleDailySummaryCommand,
+  handleShowUnconfirmedOrders,
+  handleUnconfirmedOrdersPost,
   handleWeeklySummaryCommand,
   handleMonthlySummaryCommand,
   handleAmountAdjust,
