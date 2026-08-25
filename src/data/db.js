@@ -109,7 +109,8 @@ function getDailySummary(userId, offsetDays = 0) {
 }
 
 // Returns every order confirmed today across ALL channels,
-// with _channelId / _confirmedBy / _confirmedAt injected.
+// with _channelId / _ts / _confirmedBy / _confirmedAt injected.
+// _channelId + _ts identify the order's main Slack thread (root message).
 function getAllOrdersToday(offsetDays = 0) {
   const { startMs, endMs } = lagosDateBounds(offsetDays);
   return db.prepare(
@@ -117,6 +118,7 @@ function getAllOrdersToday(offsetDays = 0) {
   ).all(startMs, endMs).map(r => ({
     ...JSON.parse(r.order_json),
     _channelId:   r.channel_ts.split(':')[0],
+    _ts:          r.channel_ts.split(':')[1],
     _confirmedAt: r.confirmed_at,
     _confirmedBy: r.confirmed_by,
   }));
@@ -128,6 +130,7 @@ function getOrdersForPeriod(startMs, endMs) {
   ).all(startMs, endMs).map(r => ({
     ...JSON.parse(r.order_json),
     _channelId:   r.channel_ts.split(':')[0],
+    _ts:          r.channel_ts.split(':')[1],
     _confirmedAt: r.confirmed_at,
     _confirmedBy: r.confirmed_by,
   }));

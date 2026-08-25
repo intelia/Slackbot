@@ -4,6 +4,12 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: "1.17.0",
+    notes: [
+      'When the "Orders with Unconfirmed Payment" list is posted to the channel, each order now links directly to its main order thread',
+    ],
+  },
+  {
     version: "1.16.0",
     notes: [
       "/daily-summary now shows the count and total amount of orders whose payment hasn't been confirmed yet, alongside the rest of the order summary",

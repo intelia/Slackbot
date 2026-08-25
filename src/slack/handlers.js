@@ -150,9 +150,10 @@ const pendingParseMap = new Map();
 // Key: `${channelId}:${reportMessageTs}` → { unconfirmed, lookup, dateLabel }
 const dailyReportStateMap = new Map();
 
-// Builds clientReference → { parsedBy, otpOverride, otpAuthorizedBy } from our own
-// confirmed-order records, so the kitchen API's unconfirmed list (joined on
-// platformOrderReference === our clientReference) can show who posted/authorized each order.
+// Builds clientReference → { parsedBy, otpOverride, otpAuthorizedBy, channelId, ts } from our
+// own confirmed-order records, so the kitchen API's unconfirmed list (joined on
+// platformOrderReference === our clientReference) can show who posted/authorized each order,
+// and link back to the order's main Slack thread.
 function _buildClientRefLookup(orders) {
   const lookup = {};
   for (const o of orders) {
@@ -161,6 +162,8 @@ function _buildClientRefLookup(orders) {
       parsedBy: o.parsedBy || null,
       otpOverride: o.otpOverride || false,
       otpAuthorizedBy: o.otpAuthorizedBy || null,
+      channelId: o._channelId || null,
+      ts: o._ts || null,
     };
   }
   return lookup;
@@ -2018,6 +2021,20 @@ async function handleUnconfirmedOrdersPost({ ack, body, view, client }) {
   }
 
   const enriched = _enrichUnconfirmedOrders(state.unconfirmed.orders, state.lookup);
+
+  // Resolve each order's main Slack thread link so the posted list can jump straight to it.
+  await Promise.all(
+    enriched.map(async (o) => {
+      if (!o.channelId || !o.ts) return;
+      try {
+        const pl = await client.chat.getPermalink({ channel: o.channelId, message_ts: o.ts });
+        if (pl.ok) o.threadLink = pl.permalink;
+      } catch (_) {
+        // No permalink available (e.g. bot no longer in that channel) — omit the link.
+      }
+    }),
+  );
+
   await client.chat.postMessage({
     channel: channelId,
     thread_ts: reportTs,

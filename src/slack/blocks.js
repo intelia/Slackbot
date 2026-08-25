@@ -1959,7 +1959,11 @@ function buildUnconfirmedOrdersBlocks(unconfirmed, enrichedOrders, dateLabel) {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: `*📋  Orders with Unconfirmed Payment*  _(${dateLabel})_\n${u.total ?? 0} order(s) awaiting payment confirmation · ${fmt(u.totalAmount)}`,
+        text: [
+          `*📋  Orders with Unconfirmed Payment*  _(${dateLabel})_`,
+          `• Total Orders: *${u.total ?? 0}*`,
+          `• Total Amount: *${fmt(u.totalAmount)}*`,
+        ].join("\n"),
       },
     },
     { type: "divider" },
@@ -1991,7 +1995,8 @@ function buildUnconfirmedOrdersBlocks(unconfirmed, enrichedOrders, dateLabel) {
       return [
         `• Order \`${o.orderNumber}\`  —  ${fmt(o.total)}  _(${time})_`,
         `  Posted by: ${postedBy}   ·   OTP authorized by: ${authorizedBy}`,
-      ].join("\n");
+        o.threadLink ? `  <${o.threadLink}|View order thread>` : null,
+      ].filter(Boolean).join("\n");
     });
     blocks.push({
       type: "section",
