@@ -1855,6 +1855,7 @@ function buildDailyReportBlocks(
   yesterdayData,
   csrOrders,
   dateLabel,
+  reportDate,
 ) {
   const k = kitchenData || {};
   const orders = k.orders || {};
@@ -1941,6 +1942,7 @@ function buildDailyReportBlocks(
             text: `📋  View Orders with Unconfirmed Payment (${unconfirmedTotal})`,
           },
           action_id: "show_unconfirmed_orders",
+          value: reportDate || "",
         },
       ],
     });

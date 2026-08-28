@@ -33,6 +33,7 @@ const {
   getOtpOverridesForPeriod,
   lagosWeekBounds,
   lagosMonthBounds,
+  lagosDateBoundsForDate,
   isLastDayOfLagosMonth,
   savePendingOrder,
   deletePendingOrder,
@@ -146,9 +147,16 @@ const modStateMap = new Map();
 // Key: `${channelId}:${warningMessageTs}` → { channelId, rawText, threadTs? }
 const pendingParseMap = new Map();
 
-// ── In-memory daily-report state (backs the "Orders with Unconfirmed Payment" drill-down) ─
-// Key: `${channelId}:${reportMessageTs}` → { unconfirmed, lookup, dateLabel }
-const dailyReportStateMap = new Map();
+// Human-readable label for an absolute Lagos-local date ("YYYY-MM-DD"), e.g. "Tuesday, 25 August 2026".
+function _humanDateLabel(dateStr) {
+  return new Date(`${dateStr}T12:00:00+01:00`).toLocaleDateString("en-NG", {
+    timeZone: "Africa/Lagos",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
+}
 
 // Builds clientReference → { parsedBy, otpOverride, otpAuthorizedBy, channelId, ts } from our
 // own confirmed-order records, so the kitchen API's unconfirmed list (joined on
@@ -1945,7 +1953,7 @@ async function handleDailySummaryCommand({ command, ack, client }) {
       return;
     }
 
-    const posted = await client.chat.postMessage({
+    await client.chat.postMessage({
       channel: channelId,
       text: `📊 Daily Operations Report — ${dateLabel}`,
       blocks: buildDailyReportBlocks(
@@ -1953,16 +1961,9 @@ async function handleDailySummaryCommand({ command, ack, client }) {
         yesterdayData,
         channelOrders,
         dateLabel,
+        lagosDate(offsetDays),
       ),
     });
-
-    if (kitchenData?.unconfirmed?.total > 0 && posted.ts) {
-      dailyReportStateMap.set(stateKey(channelId, posted.ts), {
-        unconfirmed: kitchenData.unconfirmed,
-        lookup: _buildClientRefLookup(allOrders),
-        dateLabel,
-      });
-    }
   } catch (err) {
     console.error("[handleDailySummaryCommand]", err);
     await client.chat
@@ -1977,30 +1978,45 @@ async function handleDailySummaryCommand({ command, ack, client }) {
 
 // ── Daily report: view orders with unconfirmed payment ────────────────────────
 
-async function handleShowUnconfirmedOrders({ ack, body, client }) {
+// Re-fetches the kitchen summary + our own CSR/OTP records for a given Lagos date and
+// returns the enriched unconfirmed-orders list. Stateless by design — refetched fresh on
+// every click instead of relying on an in-memory cache from when the report was posted,
+// so it survives bot restarts between "posted the report" and "clicked the button".
+async function _loadUnconfirmedOrders(reportDate) {
+  const kitchenData = await fetchKitchenSummary(reportDate, reportDate);
+  const unconfirmed = kitchenData?.unconfirmed || { total: 0, totalAmount: 0, orders: [] };
+  const { startMs, endMs } = lagosDateBoundsForDate(reportDate);
+  const lookup = _buildClientRefLookup(getOrdersForPeriod(startMs, endMs));
+  const enriched = _enrichUnconfirmedOrders(unconfirmed.orders, lookup);
+  return { unconfirmed, enriched };
+}
+
+async function handleShowUnconfirmedOrders({ ack, body, action, client }) {
   await ack();
 
   const channelId = body.container.channel_id;
   const ts = body.container.message_ts;
-  const state = dailyReportStateMap.get(stateKey(channelId, ts));
+  const reportDate = action.value;
 
-  if (!state) {
+  let unconfirmed, enriched;
+  try {
+    ({ unconfirmed, enriched } = await _loadUnconfirmedOrders(reportDate));
+  } catch (err) {
     await ephem(client, {
       channel: channelId,
       user: body.user.id,
-      text: "⚠️ This report has expired (bot may have restarted). Please rerun /daily-summary.",
+      text: `⚠️ Could not load unconfirmed orders: ${err.message}`,
     });
     return;
   }
 
-  const enriched = _enrichUnconfirmedOrders(state.unconfirmed.orders, state.lookup);
   await client.views.open({
     trigger_id: body.trigger_id,
     view: buildUnconfirmedOrdersModal(
-      JSON.stringify({ channelId, reportTs: ts }),
-      state.unconfirmed,
+      JSON.stringify({ channelId, reportTs: ts, reportDate }),
+      unconfirmed,
       enriched,
-      state.dateLabel,
+      _humanDateLabel(reportDate),
     ),
   });
 }
@@ -2008,19 +2024,19 @@ async function handleShowUnconfirmedOrders({ ack, body, client }) {
 async function handleUnconfirmedOrdersPost({ ack, body, view, client }) {
   await ack({ response_action: "clear" });
 
-  const { channelId, reportTs } = JSON.parse(view.private_metadata || "{}");
-  const state = dailyReportStateMap.get(stateKey(channelId, reportTs));
+  const { channelId, reportTs, reportDate } = JSON.parse(view.private_metadata || "{}");
 
-  if (!state) {
+  let unconfirmed, enriched;
+  try {
+    ({ unconfirmed, enriched } = await _loadUnconfirmedOrders(reportDate));
+  } catch (err) {
     await ephem(client, {
       channel: channelId,
       user: body.user.id,
-      text: "⚠️ This report has expired (bot may have restarted). Please rerun /daily-summary.",
+      text: `⚠️ Could not load unconfirmed orders: ${err.message}`,
     });
     return;
   }
-
-  const enriched = _enrichUnconfirmedOrders(state.unconfirmed.orders, state.lookup);
 
   // Resolve each order's main Slack thread link so the posted list can jump straight to it.
   await Promise.all(
@@ -2035,11 +2051,12 @@ async function handleUnconfirmedOrdersPost({ ack, body, view, client }) {
     }),
   );
 
+  const dateLabel = _humanDateLabel(reportDate);
   await client.chat.postMessage({
     channel: channelId,
     thread_ts: reportTs,
-    text: `📋 Orders with Unconfirmed Payment — ${state.dateLabel}`,
-    blocks: buildUnconfirmedOrdersBlocks(state.unconfirmed, enriched, state.dateLabel),
+    text: `📋 Orders with Unconfirmed Payment — ${dateLabel}`,
+    blocks: buildUnconfirmedOrdersBlocks(unconfirmed, enriched, dateLabel),
   });
 }
 

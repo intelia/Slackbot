@@ -50,6 +50,14 @@ function lagosDateBounds(offsetDays = 0) {
   return { startMs, endMs: startMs + 86_400_000 };
 }
 
+// Same as lagosDateBounds, but for an absolute Lagos-local calendar date ("YYYY-MM-DD")
+// instead of an offset from now. Lets callers recompute a specific day's bounds later
+// (e.g. from a button click) without depending on "now" at click time.
+function lagosDateBoundsForDate(dateStr) {
+  const startMs = Date.parse(`${dateStr}T00:00:00+01:00`);
+  return { startMs, endMs: startMs + 86_400_000 };
+}
+
 function lagosWeekBounds() {
   const { startMs: todayStart } = lagosDateBounds(0);
   const lagosDate = new Date(todayStart + LAGOS_OFFSET_MS);
@@ -222,7 +230,7 @@ module.exports = {
   findDuplicate, recordOrder,
   saveConfirmedOrder, getConfirmedOrder, getConfirmedOrderRow, updateConfirmedOrder,
   getDailySummary, getAllOrdersToday, getOrdersForPeriod, getOtpOverridesForPeriod,
-  lagosWeekBounds, lagosMonthBounds, isLastDayOfLagosMonth,
+  lagosWeekBounds, lagosMonthBounds, lagosDateBoundsForDate, isLastDayOfLagosMonth,
   savePendingOrder, deletePendingOrder, getAllPendingOrders, clearAllPendingOrders,
   getMetaValue, setMetaValue,
   setCsrInitial, getCsrByInitial, getAllCsrInitials,
