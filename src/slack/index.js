@@ -2,6 +2,7 @@
 
 const { App } = require("@slack/bolt");
 const handlers = require("./handlers");
+const subscription = require("./subscription");
 
 function createApp() {
   const app = new App({
@@ -24,6 +25,8 @@ function createApp() {
   app.command("/refresh-products", handlers.handleRefreshProductsCommand);
   app.command("/available", handlers.handleAvailabilityCommand);
   app.command("/set-initial", handlers.handleSetInitialCommand);
+  app.command("/mark-recharged", subscription.handleMarkRechargedCommand);
+  app.command("/subscription-status", subscription.handleSubscriptionStatusCommand);
 
   // ── Events ──────────────────────────────────────────────────────────────────
   app.event("app_mention", handlers.handleMentionOrder);

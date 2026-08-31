@@ -4,6 +4,18 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: "1.19.0",
+    notes: [
+      "Added AI recharge reminders for both OpenAI and Claude — the bot now DMs app managers when either 30-day top-up is due soon or has expired; run /mark-recharged openai or /mark-recharged claude after topping up, or /subscription-status to check either countdown",
+    ],
+  },
+  {
+    version: "1.18.0",
+    notes: [
+      "Added Claude as an alternate AI engine for order parsing/modification — switch via the AI_PROVIDER env var (openai or claude), no code changes needed",
+    ],
+  },
+  {
     version: "1.17.1",
     notes: [
       'Fixed "This report has expired" error on the daily report\'s Unconfirmed Payment button — it now reloads the data fresh instead of relying on an in-memory cache that a bot restart could wipe',

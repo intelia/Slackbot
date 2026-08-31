@@ -1,6 +1,6 @@
 {
   "name": "zupa-order",
-  "version": "1.17.1",
+  "version": "1.19.0",
   "description": "AI order parser for Gourmet Twist — WhatsApp/IG DM to Zupa via Slack",
   "license": "ISC",
   "type": "commonjs",
@@ -12,6 +12,7 @@
     "dev": "node --watch app.js"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.122.0",
     "@slack/bolt": "^3.21.1",
     "better-sqlite3": "^12.11.1",
     "dotenv": "^16.4.5",

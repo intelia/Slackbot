@@ -13,4 +13,9 @@ const MANAGER_USER_IDS =
         "U091TRTU3U4", // Muhammed
       ]);
 
-module.exports = { PAYMENT_ADJUSTMENT_LIMIT, MANAGER_USER_IDS };
+const APP_MANAGER_USER_IDS = new Set([
+  "U08U7T57GAH", // Ayo Aboyade
+  "U0BA1L1SFEZ", // Adebayo Azeez
+]);
+
+module.exports = { PAYMENT_ADJUSTMENT_LIMIT, MANAGER_USER_IDS, APP_MANAGER_USER_IDS };

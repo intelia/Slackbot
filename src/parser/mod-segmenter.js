@@ -1,19 +1,8 @@
 'use strict';
 
-const { OpenAI } = require('openai');
+const { createStructuredCompletion } = require('./ai-client');
 const store      = require('../data/store');
 const { matchProduct, matchZone, normalize } = require('./matcher');
-
-let _client = null;
-function getClient() {
-  if (!_client) {
-    if (!process.env.OPENAI_API_KEY) throw new Error('OPENAI_API_KEY not set');
-    _client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  }
-  return _client;
-}
-
-const MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini';
 
 function buildSystemPrompt(existingItems) {
   const todayLagos = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }); // YYYY-MM-DD
@@ -41,74 +30,62 @@ Parse what the user wants to change:
 Return ONLY the JSON object matching the schema.`;
 }
 
-const RESPONSE_FORMAT = {
-  type: 'json_schema',
-  json_schema: {
-    name: 'order_modification',
-    strict: true,
-    schema: {
-      type: 'object',
-      properties: {
-        addItems: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              productPhrase: { type: 'string' },
-              sizeToken:     { anyOf: [{ type: 'string' }, { type: 'null' }] },
-              qty:           { type: 'integer' },
-              statedPrice:   { anyOf: [{ type: 'number' }, { type: 'null' }] },
-            },
-            required: ['productPhrase', 'sizeToken', 'qty', 'statedPrice'],
-            additionalProperties: false,
-          },
+const MODIFICATION_SCHEMA = {
+  type: 'object',
+  properties: {
+    addItems: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          productPhrase: { type: 'string' },
+          sizeToken:     { anyOf: [{ type: 'string' }, { type: 'null' }] },
+          qty:           { type: 'integer' },
+          statedPrice:   { anyOf: [{ type: 'number' }, { type: 'null' }] },
         },
-        removeItems: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: { productPhrase: { type: 'string' } },
-            required: ['productPhrase'],
-            additionalProperties: false,
-          },
-        },
-        newAddress:       { anyOf: [{ type: 'string' }, { type: 'null' }] },
-        newName:          { anyOf: [{ type: 'string' }, { type: 'null' }] },
-        newPhone:         { anyOf: [{ type: 'string' }, { type: 'null' }] },
-        newScheduledDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-        newRecipient: {
-          anyOf: [
-            {
-              type: 'object',
-              properties: {
-                name:  { anyOf: [{ type: 'string' }, { type: 'null' }] },
-                phone: { anyOf: [{ type: 'string' }, { type: 'null' }] },
-              },
-              required: ['name', 'phone'],
-              additionalProperties: false,
-            },
-            { type: 'null' },
-          ],
-        },
+        required: ['productPhrase', 'sizeToken', 'qty', 'statedPrice'],
+        additionalProperties: false,
       },
-      required: ['addItems', 'removeItems', 'newAddress', 'newName', 'newPhone', 'newScheduledDate', 'newRecipient'],
-      additionalProperties: false,
+    },
+    removeItems: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { productPhrase: { type: 'string' } },
+        required: ['productPhrase'],
+        additionalProperties: false,
+      },
+    },
+    newAddress:       { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    newName:          { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    newPhone:         { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    newScheduledDate: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    newRecipient: {
+      anyOf: [
+        {
+          type: 'object',
+          properties: {
+            name:  { anyOf: [{ type: 'string' }, { type: 'null' }] },
+            phone: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+          },
+          required: ['name', 'phone'],
+          additionalProperties: false,
+        },
+        { type: 'null' },
+      ],
     },
   },
+  required: ['addItems', 'removeItems', 'newAddress', 'newName', 'newPhone', 'newScheduledDate', 'newRecipient'],
+  additionalProperties: false,
 };
 
 async function aiSegmentMod(rawText, existingItems) {
-  const client = getClient();
-  const res = await client.chat.completions.create({
-    model: MODEL,
-    temperature: 0,
-    response_format: RESPONSE_FORMAT,
-    messages: [
-      { role: 'system', content: buildSystemPrompt(existingItems) },
-      { role: 'user',   content: rawText },
-    ],
+  const parsed = await createStructuredCompletion({
+    schemaName: 'order_modification',
+    schema: MODIFICATION_SCHEMA,
+    systemPrompt: buildSystemPrompt(existingItems),
+    userMessage: rawText,
   });
-  const parsed = JSON.parse(res.choices[0].message.content);
   parsed.addItems    = parsed.addItems    || [];
   parsed.removeItems = parsed.removeItems || [];
   return parsed;

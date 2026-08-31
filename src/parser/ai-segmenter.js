@@ -1,20 +1,8 @@
 "use strict";
 
-const { OpenAI } = require("openai");
+const { createStructuredCompletion } = require("./ai-client");
 const { segment: ruleSegment } = require("./segmenter");
 const store = require("../data/store");
-
-let _client = null;
-
-function getClient() {
-  if (!_client) {
-    if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY not set");
-    _client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  }
-  return _client;
-}
-
-const MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 
 const BASE_SYSTEM_PROMPT = `You are an order extraction assistant for Gourmet Twist, a bakery in Lagos, Nigeria.
 
@@ -40,7 +28,7 @@ Extraction rules:
 - Notes: special instructions like "please prioritize", "urgent", "extra spicy", "no sugar". Short noise phrases (greetings, "hi", "Hello", "eye -", single orphan letters) go into notes only if they could be instructions; otherwise ignore.
 - Ignore lines that are clearly noise: orphan letters/characters, "eye -" without context, greetings with no content.
 - receiptName: if the message contains a name explicitly identified as the name on the payment transfer/receipt/bank statement — e.g. "name on receipt: John Okafor", "payment name: Ada", "sent from: Emeka Adeyemi", "transfer name: Chidi", "bank name: Oluwaseun", "name on transfer: Bisi" — extract it here. This is ONLY the bank transfer sender name when stated separately from the customer name; it is used for payment matching only and should not affect customer or recipient fields. Return null if not mentioned.
-- couponCode: if the message mentions a discount/promo coupon — e.g. "coupon FREE-DELV", "coupon code: XYZ123", "promo code XYZ123", "use code XYZ123" — extract just the code itself (e.g. "FREE-DELV"), preserving its original casing. Return null if no coupon is mentioned.
+- couponCode: if the message mentions a discount/promo coupon — e.g. "coupon FREE-DELV", "coupon code: XYZ123", "promo code XYZ123", "use code XYZ123" — extract just the code itself (e.g. "FREE-DELV"), preserving its original casing. Return null if no coupon is mentioned. IMPORTANT: a bare "#XX" (1-4 letters, no other coupon wording) at the very end of the message is a staff-member sign-off tag, NOT a coupon — always return null for it. Only extract couponCode when the message explicitly uses a coupon/promo/code word.
 
 Return ONLY the JSON object matching the schema. Do not include explanation.`;
 
@@ -56,108 +44,93 @@ function buildSystemPrompt() {
   return `${BASE_SYSTEM_PROMPT}\n\nToday's date (Lagos time): ${todayLagos}${cataloguePart}`;
 }
 
-// OpenAI structured-output schema (strict: true compatible)
-const RESPONSE_FORMAT = {
-  type: "json_schema",
-  json_schema: {
-    name: "order_extraction",
-    strict: true,
-    schema: {
+// Structured-output schema shared across providers (OpenAI strict json_schema / Claude tool input_schema)
+const ORDER_SCHEMA = {
+  type: "object",
+  properties: {
+    customer: {
       type: "object",
       properties: {
-        customer: {
+        name: { anyOf: [{ type: "string" }, { type: "null" }] },
+        phone: { anyOf: [{ type: "string" }, { type: "null" }] },
+        instagram: { anyOf: [{ type: "string" }, { type: "null" }] },
+      },
+      required: ["name", "phone", "instagram"],
+      additionalProperties: false,
+    },
+    fulfillment: {
+      type: "object",
+      properties: {
+        type: { type: "string", enum: ["pickup", "delivery", "unknown"] },
+        address: { anyOf: [{ type: "string" }, { type: "null" }] },
+        branch: { anyOf: [{ type: "string" }, { type: "null" }] },
+        statedFee: { anyOf: [{ type: "number" }, { type: "null" }] },
+      },
+      required: ["type", "address", "branch", "statedFee"],
+      additionalProperties: false,
+    },
+    itemLines: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          raw: { type: "string" },
+          productPhrase: { type: "string" },
+          sizeToken: { anyOf: [{ type: "string" }, { type: "null" }] },
+          qty: { type: "integer" },
+          statedPrice: { anyOf: [{ type: "number" }, { type: "null" }] },
+        },
+        required: [
+          "raw",
+          "productPhrase",
+          "sizeToken",
+          "qty",
+          "statedPrice",
+        ],
+        additionalProperties: false,
+      },
+    },
+    statedTotal: { anyOf: [{ type: "number" }, { type: "null" }] },
+    scheduledDate: { anyOf: [{ type: "string" }, { type: "null" }] },
+    recipient: {
+      anyOf: [
+        {
           type: "object",
           properties: {
             name: { anyOf: [{ type: "string" }, { type: "null" }] },
             phone: { anyOf: [{ type: "string" }, { type: "null" }] },
-            instagram: { anyOf: [{ type: "string" }, { type: "null" }] },
           },
-          required: ["name", "phone", "instagram"],
+          required: ["name", "phone"],
           additionalProperties: false,
         },
-        fulfillment: {
-          type: "object",
-          properties: {
-            type: { type: "string", enum: ["pickup", "delivery", "unknown"] },
-            address: { anyOf: [{ type: "string" }, { type: "null" }] },
-            branch: { anyOf: [{ type: "string" }, { type: "null" }] },
-            statedFee: { anyOf: [{ type: "number" }, { type: "null" }] },
-          },
-          required: ["type", "address", "branch", "statedFee"],
-          additionalProperties: false,
-        },
-        itemLines: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              raw: { type: "string" },
-              productPhrase: { type: "string" },
-              sizeToken: { anyOf: [{ type: "string" }, { type: "null" }] },
-              qty: { type: "integer" },
-              statedPrice: { anyOf: [{ type: "number" }, { type: "null" }] },
-            },
-            required: [
-              "raw",
-              "productPhrase",
-              "sizeToken",
-              "qty",
-              "statedPrice",
-            ],
-            additionalProperties: false,
-          },
-        },
-        statedTotal: { anyOf: [{ type: "number" }, { type: "null" }] },
-        scheduledDate: { anyOf: [{ type: "string" }, { type: "null" }] },
-        recipient: {
-          anyOf: [
-            {
-              type: "object",
-              properties: {
-                name: { anyOf: [{ type: "string" }, { type: "null" }] },
-                phone: { anyOf: [{ type: "string" }, { type: "null" }] },
-              },
-              required: ["name", "phone"],
-              additionalProperties: false,
-            },
-            { type: "null" },
-          ],
-        },
-        notes: { type: "array", items: { type: "string" } },
-        receiptName: { anyOf: [{ type: "string" }, { type: "null" }] },
-        couponCode: { anyOf: [{ type: "string" }, { type: "null" }] },
-      },
-      required: [
-        "customer",
-        "fulfillment",
-        "itemLines",
-        "statedTotal",
-        "scheduledDate",
-        "recipient",
-        "notes",
-        "receiptName",
-        "couponCode",
+        { type: "null" },
       ],
-      additionalProperties: false,
     },
+    notes: { type: "array", items: { type: "string" } },
+    receiptName: { anyOf: [{ type: "string" }, { type: "null" }] },
+    couponCode: { anyOf: [{ type: "string" }, { type: "null" }] },
   },
+  required: [
+    "customer",
+    "fulfillment",
+    "itemLines",
+    "statedTotal",
+    "scheduledDate",
+    "recipient",
+    "notes",
+    "receiptName",
+    "couponCode",
+  ],
+  additionalProperties: false,
 };
 
 async function aiSegment(rawMessage) {
-  const client = getClient();
-
-  const completion = await client.chat.completions.create({
-    model: MODEL,
-    temperature: 0,
-    response_format: RESPONSE_FORMAT,
-    messages: [
-      { role: "system", content: buildSystemPrompt() },
-      { role: "user", content: rawMessage },
-    ],
+  const parsed = await createStructuredCompletion({
+    schemaName: "order_extraction",
+    schema: ORDER_SCHEMA,
+    systemPrompt: buildSystemPrompt(),
+    userMessage: rawMessage,
   });
-
-  const content = completion.choices[0].message.content;
-  const parsed = JSON.parse(content);
 
   // Ensure required array fields are present (defensive)
   parsed.itemLines = parsed.itemLines || [];
@@ -173,7 +146,7 @@ async function segment(rawMessage) {
     return response;
   } catch (err) {
     console.warn(
-      "[ai-segmenter] OpenAI call failed, falling back to rule-based parser:",
+      "[ai-segmenter] AI call failed, falling back to rule-based parser:",
       err.message,
     );
     return ruleSegment(rawMessage);

@@ -19,6 +19,8 @@ There is no test suite, linter, or build step in this repo — don't invent one 
 
 Required env vars (see `.env.example`): `SLACK_BOT_TOKEN`, `SLACK_SIGNING_SECRET`, `SLACK_APP_TOKEN`, `ZUPA_API`, `ZUPA_API_TOKEN`, `OPENAI_API_KEY`. `.env` / `.env.production` are gitignored — `process.env.ENV === "dev"` switches `MANAGER_USER_IDS` (in `src/constants.js`) to a dev-only Slack user for testing manager-gated flows.
 
+`AI_PROVIDER` (`openai` default, or `claude`/`anthropic`) selects which model both AI segmenters use — `src/parser/ai-client.js` is the shared structured-output wrapper (`createStructuredCompletion`) that `ai-segmenter.js` and `mod-segmenter.js` call into instead of hitting OpenAI/Anthropic SDKs directly. Requires `OPENAI_API_KEY`/`OPENAI_MODEL` for the OpenAI path or `ANTHROPIC_API_KEY`/`CLAUDE_MODEL` for the Claude path (only the active provider's key is required at runtime). Both paths take the same plain JSON schema — OpenAI via `response_format: json_schema` (strict mode), Claude via a forced tool call (`tool_choice`) — so schemas are defined once per segmenter and shared across providers.
+
 ## Architecture
 
 ### Data flow: catalogue → parse → resolve → confirm → push
@@ -37,13 +39,19 @@ A `better-sqlite3` DB (`zupa-orders.db`, gitignored) is the source of truth for 
 - `live_orders` — confirmed orders (keyed by `channel:ts`), used for daily/weekly/monthly summaries, duplicate detection, and OTP-override reporting.
 - `confirmed_orders` — a hash of the normalized raw message text, used to warn staff when they paste a duplicate order (`parse_anyway`/`cancel_parse` actions).
 - `csr_initials` — maps a `#XX` hashtag initial (via `/set-initial`) to a staff name, so orders posted with an initial show who parsed them.
-- `bot_meta` — tracks the last-deployed version so restart notifications can show a changelog diff (`src/changelog.js`).
+- `bot_meta` — a generic key/value table; tracks the last-deployed version so restart notifications can show a changelog diff (`src/changelog.js`), and the OpenAI recharge date (`src/slack/subscription.js`).
 
 All "day/week/month" boundaries are computed in Africa/Lagos local time (`LAGOS_OFFSET_MS`, fixed UTC+1 — no DST), not server time or UTC.
 
 ### Manager-gated flows
 
 `MANAGER_USER_IDS` (`src/constants.js`) gates: OTP payment-override authorization, receipt linking, and marking an OTP order's payment complete. The OTP flow spans multiple Slack surfaces — a DM notification sent to every manager (via `otp_authorize` action) that must all update in sync when any one manager acts (see `_updateOtpMessageStatus` in `handlers.js`), plus the order's own confirmation card in-channel.
+
+`APP_MANAGER_USER_IDS` (`src/constants.js`) is a separate set — the people who manage the bot/infra itself (currently just OpenAI billing), not order operations. It gates `/mark-recharged`.
+
+### AI recharge reminders (`src/slack/subscription.js`)
+
+Tracks OpenAI and Claude (Anthropic) recharges independently — there's no billing API to query, so each is a manually-recorded date. Run `/mark-recharged openai` or `/mark-recharged claude` right after topping up (append a `YYYY-MM-DD` to backdate it if you forgot to run it on the actual day — future dates are rejected); it stores that date in `bot_meta` under its own key (`openai_subscription_recharged_at` / `anthropic_subscription_recharged_at`) via the `PROVIDERS` map in `subscription.js`. A daily 9am Lagos cron (`scheduleSubscriptionReminder`, started in `app.js`) checks both providers' 30-day cycles and DMs every `APP_MANAGER_USER_IDS` member once ≤3 days remain on either, repeating daily (including after expiry) per provider until that provider's `/mark-recharged` is rerun. `/subscription-status` (optionally with `openai`/`claude`) reports the countdown for one or both on demand. A provider with no recharge date ever recorded is just skipped by the cron — there's no way to infer a cycle start.
 
 ### Versioning
 
