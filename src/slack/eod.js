@@ -153,9 +153,11 @@ function _resolveTargets(allOrders) {
     if (!byChannel.has(ch)) byChannel.set(ch, []);
     byChannel.get(ch).push(order);
   }
-  const targets = byChannel.size > 0
-    ? Array.from(byChannel.keys())
-    : (process.env.NOTIFY_CHANNELS || '').split(',').map(s => s.trim()).filter(Boolean);
+  // Union with NOTIFY_CHANNELS (same pattern as postRestartNotification) rather than
+  // only falling back to it when zero order-channels are found — so an explicitly
+  // configured channel always gets the report even if channel-derived targets misfire.
+  const envChannels = (process.env.NOTIFY_CHANNELS || '').split(',').map(s => s.trim()).filter(Boolean);
+  const targets = Array.from(new Set([...byChannel.keys(), ...envChannels]));
   return { byChannel, targets };
 }
 
@@ -180,13 +182,18 @@ async function postEodSummaries(client) {
     console.error('[eod] Daily kitchen API failed:', err.message);
   }
 
+  console.log(`[eod] kitchenData=${kitchenData ? 'ok' : 'null'} allOrders=${allOrders.length} (channels: ${[...new Set(allOrders.map(o => o._channelId).filter(Boolean))].join(', ') || 'none'})`);
+
   if (!kitchenData && allOrders.length === 0) {
     console.log('[eod] No data today — skipping daily report.');
     return;
   }
 
   const { byChannel, targets } = _resolveTargets(allOrders);
-  if (targets.length === 0) { console.log('[eod] No channels for daily report.'); return; }
+  if (targets.length === 0) {
+    console.log('[eod] No channels for daily report — no confirmed-order channels today and NOTIFY_CHANNELS is unset.');
+    return;
+  }
 
   console.log(`[eod] Posting daily report to ${targets.length} channel(s).`);
   await Promise.allSettled(targets.map(async channelId => {
