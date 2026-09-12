@@ -16,6 +16,11 @@ const MANAGER_USER_IDS =
 const APP_MANAGER_USER_IDS = new Set([
   "U08U7T57GAH", // Ayo Aboyade
   "U0BA1L1SFEZ", // Adebayo Azeez
+  "U08V531QSS2", // Udoka Uzoka
 ]);
 
-module.exports = { PAYMENT_ADJUSTMENT_LIMIT, MANAGER_USER_IDS, APP_MANAGER_USER_IDS };
+module.exports = {
+  PAYMENT_ADJUSTMENT_LIMIT,
+  MANAGER_USER_IDS,
+  APP_MANAGER_USER_IDS,
+};
