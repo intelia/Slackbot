@@ -161,6 +161,15 @@ function _resolveTargets(allOrders) {
   return { byChannel, targets };
 }
 
+// Promise.allSettled swallows rejections — surface them so a failed post isn't silent.
+function _logFailures(label, targets, results) {
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') {
+      console.error(`[eod] ✗ ${label} report failed for ${targets[i]}:`, r.reason?.data?.error || r.reason?.message || r.reason);
+    }
+  });
+}
+
 // ── Daily Operations Report ───────────────────────────────────────────────────
 
 async function postEodSummaries(client) {
@@ -196,15 +205,18 @@ async function postEodSummaries(client) {
   }
 
   console.log(`[eod] Posting daily report to ${targets.length} channel(s).`);
-  await Promise.allSettled(targets.map(async channelId => {
+  const results = await Promise.allSettled(targets.map(async channelId => {
     const channelOrders = byChannel.get(channelId) || [];
     await client.chat.postMessage({
       channel: channelId,
       text: `📊 Daily Operations Report — ${dateLabel}`,
-      blocks: buildDailyReportBlocks(kitchenData, yesterdayData, channelOrders, dateLabel),
+      // reportDate is required — it's the "View Unconfirmed Payments" button value, and
+      // Slack rejects the whole message if a button value is empty.
+      blocks: buildDailyReportBlocks(kitchenData, yesterdayData, channelOrders, dateLabel, today),
     });
     console.log(`[eod] ✓ Daily posted to ${channelId}`);
   }));
+  _logFailures('Daily', targets, results);
 
   const cleared = await clearExpiredPendingOrders(client);
   if (cleared > 0) console.log(`[eod] Auto-cleared ${cleared} expired pending order(s).`);
@@ -248,7 +260,7 @@ async function postWeeklySummary(client) {
   if (targets.length === 0) { console.log('[eod] No channels for weekly report.'); return; }
 
   console.log(`[eod] Posting weekly report to ${targets.length} channel(s).`);
-  await Promise.allSettled(targets.map(async channelId => {
+  const results = await Promise.allSettled(targets.map(async channelId => {
     const channelOrders = byChannel.get(channelId) || [];
     await client.chat.postMessage({
       channel: channelId,
@@ -257,6 +269,7 @@ async function postWeeklySummary(client) {
     });
     console.log(`[eod] ✓ Weekly posted to ${channelId}`);
   }));
+  _logFailures('Weekly', targets, results);
 }
 
 // ── Monthly Operations Report ─────────────────────────────────────────────────
@@ -304,7 +317,7 @@ async function postMonthlySummary(client) {
   if (targets.length === 0) { console.log('[eod] No channels for monthly report.'); return; }
 
   console.log(`[eod] Posting monthly report to ${targets.length} channel(s).`);
-  await Promise.allSettled(targets.map(async channelId => {
+  const results = await Promise.allSettled(targets.map(async channelId => {
     const channelOrders = byChannel.get(channelId) || [];
     await client.chat.postMessage({
       channel: channelId,
@@ -313,6 +326,7 @@ async function postMonthlySummary(client) {
     });
     console.log(`[eod] ✓ Monthly posted to ${channelId}`);
   }));
+  _logFailures('Monthly', targets, results);
 }
 
 // ── Scheduler ─────────────────────────────────────────────────────────────────

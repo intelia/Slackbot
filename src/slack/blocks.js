@@ -1765,13 +1765,23 @@ function _buildOtpPaymentsText(otpOrders) {
     lines.push("• None this week.");
     return lines.join("\n");
   }
-  for (const o of otpOrders) {
+  // Slack rejects the whole message if a section's text exceeds 3000 chars —
+  // stop adding orders before that and summarise the remainder.
+  const MAX_CHARS = 2900;
+  let len = lines[0].length;
+  for (const [i, o] of otpOrders.entries()) {
     const orderNum = o.orderNumber || o.clientReference || "—";
     const price = o.orderTotal
       ? `₦${Number(o.orderTotal).toLocaleString("en-NG")}`
       : "—";
     const auth = o._otpAuthorizedBy ? `<@${o._otpAuthorizedBy}>` : "—";
-    lines.push(`• Order \`${orderNum}\` | ${price}\n  Authorised by: ${auth}`);
+    const line = `• Order \`${orderNum}\` | ${price}\n  Authorised by: ${auth}`;
+    if (len + line.length + 1 > MAX_CHARS) {
+      lines.push(`_…and ${otpOrders.length - i} more_`);
+      break;
+    }
+    lines.push(line);
+    len += line.length + 1;
   }
   return lines.join("\n");
 }

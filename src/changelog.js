@@ -4,6 +4,12 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: "1.19.1",
+    notes: [
+      "Fixed the 9pm Daily Operations Report not posting on days with unconfirmed payments, and the Sunday Weekly Report failing when the unconfirmed-payments list was long",
+    ],
+  },
+  {
     version: "1.19.0",
     notes: [
       "Added AI recharge reminders for both OpenAI and Claude — the bot now DMs app managers when either 30-day top-up is due soon or has expired; run /mark-recharged openai or /mark-recharged claude after topping up, or /subscription-status to check either countdown",
