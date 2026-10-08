@@ -1957,13 +1957,19 @@ async function handleDailySummaryCommand({ command, ack, client }) {
     });
 
     if (source === "restaurant") {
-      const terminalData = await fetchTerminalDailySummary(
-        lagosDate(offsetDays),
-        lagosDate(offsetDays),
-      ).catch((err) => {
-        console.error("[daily-summary] Terminal API:", err.message);
-        return null;
-      });
+      const [terminalData, yesterdayTerminalData] = await Promise.all([
+        fetchTerminalDailySummary(
+          lagosDate(offsetDays),
+          lagosDate(offsetDays),
+        ).catch((err) => {
+          console.error("[daily-summary] Terminal API:", err.message);
+          return null;
+        }),
+        fetchTerminalDailySummary(
+          lagosDate(offsetDays - 1),
+          lagosDate(offsetDays - 1),
+        ).catch(() => null),
+      ]);
 
       if (!terminalData || (terminalData.orders?.total || 0) === 0) {
         await client.chat.postEphemeral({
@@ -1977,7 +1983,7 @@ async function handleDailySummaryCommand({ command, ack, client }) {
       await client.chat.postMessage({
         channel: channelId,
         text: `🏬 Restaurant Order Daily Summary — ${dateLabel}`,
-        blocks: buildTerminalDailySummaryBlocks(terminalData, dateLabel),
+        blocks: buildTerminalDailySummaryBlocks(terminalData, dateLabel, yesterdayTerminalData),
       });
       return;
     }

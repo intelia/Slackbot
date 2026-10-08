@@ -1962,11 +1962,37 @@ function buildDailyReportBlocks(
   return blocks;
 }
 
+function _revenueCmpLine(icon, diff, currentTotal) {
+  if (diff === 0) return `${icon} Revenue: ${fmt(currentTotal)} (no change)`;
+  return `${icon} Revenue: ${fmt(currentTotal)} (${diff > 0 ? "+" : "-"}${fmt(Math.abs(diff))})`;
+}
+
+function _buildTerminalComparisonText(today, prev, label) {
+  if (!prev) return null;
+  const to = (today || {}).orders || {};
+  const po = (prev || {}).orders || {};
+  const tr = (today || {}).revenue?.total ?? 0;
+  const pr = (prev || {}).revenue?.total ?? 0;
+
+  const totalDiff = (to.total ?? 0) - (po.total ?? 0);
+  const paidDiff = (to.paid ?? 0) - (po.paid ?? 0);
+  const unpaidDiff = (to.unpaid ?? 0) - (po.unpaid ?? 0);
+  const revenueDiff = tr - pr;
+
+  return [
+    `*📈  Comparison to ${label}*`,
+    _cmpLine(_cmpIcon(totalDiff), "Total Orders", totalDiff, to.total ?? 0),
+    _cmpLine(_cmpIcon(paidDiff), "Paid", paidDiff, to.paid ?? 0),
+    _cmpLine(_cmpIcon(unpaidDiff, true), "Unpaid", unpaidDiff, to.unpaid ?? 0),
+    _revenueCmpLine(_cmpIcon(revenueDiff), revenueDiff, tr),
+  ].join("\n");
+}
+
 // ── Restaurant (Terminal/POS) Order Daily Summary ─────────────────────────────
 // Separate from the online/Slack-parsed Daily Operations Report above — sourced
 // from zupa-api's terminal_orders + terminal_order_cart_activities (staff
 // attribution is each order's earliest cart activity's staffName).
-function buildTerminalDailySummaryBlocks(terminalData, dateLabel) {
+function buildTerminalDailySummaryBlocks(terminalData, dateLabel, yesterdayData) {
   const t = terminalData || {};
   const orders = t.orders || {};
   const revenue = t.revenue || {};
@@ -2006,6 +2032,12 @@ function buildTerminalDailySummaryBlocks(terminalData, dateLabel) {
       type: "section",
       text: { type: "mrkdwn", text: ["*👤  By Staff*", ...lines].join("\n") },
     });
+    blocks.push({ type: "divider" });
+  }
+
+  const cmpText = _buildTerminalComparisonText(terminalData, yesterdayData, "Yesterday");
+  if (cmpText) {
+    blocks.push({ type: "section", text: { type: "mrkdwn", text: cmpText } });
     blocks.push({ type: "divider" });
   }
 

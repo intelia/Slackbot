@@ -232,10 +232,15 @@ async function postTerminalDailySummary(client) {
     timeZone: 'Africa/Lagos', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
   });
   const today = lagosDateString(0);
+  const yesterday = lagosDateString(-1);
 
   let terminalData = null;
+  let yesterdayData = null;
   try {
-    terminalData = await fetchTerminalDailySummary(today, today);
+    [terminalData, yesterdayData] = await Promise.all([
+      fetchTerminalDailySummary(today, today),
+      fetchTerminalDailySummary(yesterday, yesterday).catch(() => null),
+    ]);
   } catch (err) {
     console.error('[eod] Terminal daily summary failed:', err.message);
     return;
@@ -257,7 +262,7 @@ async function postTerminalDailySummary(client) {
     await client.chat.postMessage({
       channel: channelId,
       text: `🏬 Restaurant Order Daily Summary — ${dateLabel}`,
-      blocks: buildTerminalDailySummaryBlocks(terminalData, dateLabel),
+      blocks: buildTerminalDailySummaryBlocks(terminalData, dateLabel, yesterdayData),
     });
     console.log(`[eod] ✓ Restaurant summary posted to ${channelId}`);
   }));
