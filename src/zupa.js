@@ -285,6 +285,26 @@ async function fetchKitchenSummary(startDate, endDate) {
   return result;
 }
 
+async function fetchTerminalDailySummary(startDate, endDate) {
+  const url = new URL(`${process.env.ZUPA_API}/kitchen-api/terminal-daily-summary`);
+  url.searchParams.set("startDate", startDate);
+  url.searchParams.set("endDate", endDate);
+  console.log(`[Zupa] Fetching terminal daily summary ${startDate}→${endDate}`);
+  const res = await fetch(url.toString(), {
+    headers: { Authorization: `Bearer ${process.env.ZUPA_API_TOKEN}` },
+  });
+  console.log(`[Zupa] Terminal daily summary response: ${res.status}`);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      err.message || `Terminal daily summary API failed (HTTP ${res.status})`,
+    );
+  }
+  const result = await res.json();
+  console.log("[Zupa] Terminal daily summary data:", result);
+  return result;
+}
+
 module.exports = {
   pushToZupa,
   buildZupaPayload,
@@ -297,4 +317,5 @@ module.exports = {
   confirmReceiptMatch,
   authorizeOtpOverride,
   fetchKitchenSummary,
+  fetchTerminalDailySummary,
 };

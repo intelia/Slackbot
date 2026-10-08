@@ -186,30 +186,43 @@ function matchProduct(productPhrase, sizeToken, statedPrice, qty, limit = 6) {
 
 // ── Zone matching ─────────────────────────────────────────────────────────────
 
-function matchPickup(address, branch) {
-  const { pickupRows } = store.getCities();
+// restrictBranches: a non-empty array of branch names to restrict to, or
+// null/undefined/[] for no restriction (a user with no branch assignment).
+function filterByBranch(rows, restrictBranches) {
+  if (!restrictBranches || restrictBranches.length === 0) return rows;
+  const allowed = new Set(restrictBranches.map(b => b.toLowerCase()));
+  return rows.filter(r => allowed.has((r.branch || '').toLowerCase()));
+}
+
+function matchPickup(address, branch, restrictBranches) {
+  const pickupRows  = filterByBranch(store.getCities().pickupRows, restrictBranches);
   const upper       = (address || '').toUpperCase();
   const branchUpper = (branch  || '').toUpperCase();
 
+  if (pickupRows.length === 0) return null;
   if (branchUpper === 'OPEBI' || upper.includes('OPEBI')) return pickupRows.find(r => /opebi/i.test(r.name)) || pickupRows[0];
   if (branchUpper === 'LEKKI' || upper.includes('LEKKI')) return pickupRows.find(r => /lekki/i.test(r.name)) || pickupRows[0];
   return pickupRows.find(r => /^pickup$/i.test(r.name)) || pickupRows[0];
 }
 
-function matchZone(address) {
+function matchZone(address, restrictBranches) {
   if (!address) return null;
-  const { namedZones } = store.getCities();
+  const namedZones    = filterByBranch(store.getCities().namedZones, restrictBranches);
   const addressNorm   = normalize(address);
   const addressTokens = tokenize(addressNorm);
 
-  // 1. Alias map
+  // 1. Alias map (only honored if it doesn't cross the caller's branch restriction)
+  const aliasMatches = (alias) =>
+    !restrictBranches || restrictBranches.length === 0 ||
+    restrictBranches.some(b => b.toLowerCase() === (alias.branch || '').toLowerCase());
+
   const aliasKey = addressNorm.replace(/[^A-Z0-9\s]/g, '').trim();
-  if (ALIAS_MAP[aliasKey]) {
+  if (ALIAS_MAP[aliasKey] && aliasMatches(ALIAS_MAP[aliasKey])) {
     const alias = ALIAS_MAP[aliasKey];
     return namedZones.find(z => z.id === alias.zoneId) || { id: alias.zoneId, name: alias.zoneName, price: 0, branch: alias.branch, isSurge: false };
   }
   for (const token of addressTokens) {
-    if (ALIAS_MAP[token]) {
+    if (ALIAS_MAP[token] && aliasMatches(ALIAS_MAP[token])) {
       const alias = ALIAS_MAP[token];
       return namedZones.find(z => z.id === alias.zoneId) || { id: alias.zoneId, name: alias.zoneName, price: 0, branch: alias.branch, isSurge: false };
     }

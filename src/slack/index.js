@@ -25,6 +25,7 @@ function createApp() {
   app.command("/refresh-products", handlers.handleRefreshProductsCommand);
   app.command("/available", handlers.handleAvailabilityCommand);
   app.command("/set-initial", handlers.handleSetInitialCommand);
+  app.command("/set-branch", handlers.handleSetBranchCommand);
   app.command("/mark-recharged", subscription.handleMarkRechargedCommand);
   app.command("/subscription-status", subscription.handleSubscriptionStatusCommand);
 

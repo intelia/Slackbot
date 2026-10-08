@@ -4,6 +4,18 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: "1.21.0",
+    notes: [
+      "Added a Restaurant Order Daily Summary (terminal/POS sales, broken down by staff) — posts automatically at 9pm alongside the existing Daily Operations Report, and /daily-summary now accepts an optional source: /daily-summary restaurant for terminal orders, /daily-summary main (default) for the usual online-order report",
+    ],
+  },
+  {
+    version: "1.20.0",
+    notes: [
+      "Added per-user branch scoping — /set-branch (app managers only) assigns a Slack user to a branch (lekki/opebi/abuja), and from then on that user's order parsing, modifications, and /cities search only consider delivery zones in their branch",
+    ],
+  },
+  {
     version: "1.19.1",
     notes: [
       "Fixed the 9pm Daily Operations Report not posting on days with unconfirmed payments, and the Sunday Weekly Report failing when the unconfirmed-payments list was long",

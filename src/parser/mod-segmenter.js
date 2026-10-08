@@ -92,7 +92,7 @@ async function aiSegmentMod(rawText, existingItems) {
 }
 
 // Resolves an AI seg into matched products, zone, etc.
-function resolve(seg, confirmedOrder) {
+function resolve(seg, confirmedOrder, restrictBranches) {
   const addItems            = [];
   const unresolvedAdditions = [];
 
@@ -132,7 +132,7 @@ function resolve(seg, confirmedOrder) {
 
   let newZoneId = null, newZoneName = null, newBranch = null, newFee = null;
   if (seg.newAddress) {
-    const zone = matchZone(seg.newAddress);
+    const zone = matchZone(seg.newAddress, restrictBranches);
     if (zone) {
       newZoneId   = zone.id;
       newZoneName = zone.name;
@@ -163,9 +163,9 @@ function resolve(seg, confirmedOrder) {
   };
 }
 
-async function parseModification(rawText, confirmedOrder) {
+async function parseModification(rawText, confirmedOrder, restrictBranches) {
   const seg = await aiSegmentMod(rawText, confirmedOrder.items);
-  return resolve(seg, confirmedOrder);
+  return resolve(seg, confirmedOrder, restrictBranches);
 }
 
 module.exports = { parseModification };

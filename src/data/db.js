@@ -34,7 +34,39 @@ db.exec(`
     slack_user_id TEXT,
     updated_at   INTEGER NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS user_branches (
+    slack_user_id TEXT NOT NULL,
+    branch        TEXT NOT NULL,
+    set_by        TEXT,
+    updated_at    INTEGER NOT NULL,
+    PRIMARY KEY (slack_user_id, branch)
+  );
 `);
+
+// user_branches briefly shipped as single-branch-per-user (PK on slack_user_id
+// alone) before multi-branch support was added — migrate any such table to the
+// composite-key schema, preserving existing rows.
+try {
+  const cols = db.prepare("PRAGMA table_info(user_branches)").all();
+  const isOldSchema = cols.length > 0 && !cols.some((c) => c.name === 'branch' && c.pk > 0);
+  if (isOldSchema) {
+    const oldRows = db.prepare('SELECT slack_user_id, branch, set_by, updated_at FROM user_branches').all();
+    db.exec('DROP TABLE user_branches');
+    db.exec(`
+      CREATE TABLE user_branches (
+        slack_user_id TEXT NOT NULL,
+        branch        TEXT NOT NULL,
+        set_by        TEXT,
+        updated_at    INTEGER NOT NULL,
+        PRIMARY KEY (slack_user_id, branch)
+      )
+    `);
+    const insert = db.prepare(
+      'INSERT OR REPLACE INTO user_branches (slack_user_id, branch, set_by, updated_at) VALUES (?, ?, ?, ?)'
+    );
+    for (const r of oldRows) insert.run(r.slack_user_id, r.branch, r.set_by, r.updated_at);
+  }
+} catch (_) {}
 
 // Migrations
 try { db.exec('ALTER TABLE live_orders ADD COLUMN confirmed_by TEXT'); } catch (_) {}
@@ -215,6 +247,35 @@ function getAllCsrInitials() {
   return db.prepare('SELECT initial, name FROM csr_initials ORDER BY initial ASC').all();
 }
 
+// ── User → branch assignments (a user can be assigned more than one) ────────
+
+function addUserBranch(slackUserId, branch, setBy) {
+  db.prepare(
+    'INSERT OR REPLACE INTO user_branches (slack_user_id, branch, set_by, updated_at) VALUES (?, ?, ?, ?)'
+  ).run(slackUserId, branch, setBy || null, Date.now());
+}
+
+// Omit `branch` to remove every branch assigned to this user (full unassign).
+// Returns the number of rows removed.
+function removeUserBranch(slackUserId, branch) {
+  if (branch) {
+    return db.prepare('DELETE FROM user_branches WHERE slack_user_id = ? AND branch = ?')
+      .run(slackUserId, branch).changes;
+  }
+  return db.prepare('DELETE FROM user_branches WHERE slack_user_id = ?')
+    .run(slackUserId).changes;
+}
+
+function getUserBranches(slackUserId) {
+  if (!slackUserId) return [];
+  return db.prepare('SELECT branch FROM user_branches WHERE slack_user_id = ? ORDER BY branch ASC')
+    .all(slackUserId).map((r) => r.branch);
+}
+
+function getAllUserBranches() {
+  return db.prepare('SELECT slack_user_id, branch FROM user_branches ORDER BY slack_user_id ASC, branch ASC').all();
+}
+
 // ── Bot metadata (version tracking, etc.) ────────────────────────────────────
 
 function getMetaValue(key) {
@@ -234,4 +295,5 @@ module.exports = {
   savePendingOrder, deletePendingOrder, getAllPendingOrders, clearAllPendingOrders,
   getMetaValue, setMetaValue,
   setCsrInitial, getCsrByInitial, getAllCsrInitials,
+  addUserBranch, removeUserBranch, getUserBranches, getAllUserBranches,
 };

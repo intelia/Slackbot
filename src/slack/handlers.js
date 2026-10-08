@@ -13,6 +13,7 @@ const {
   pushToZupa,
   pushModification,
   fetchKitchenSummary,
+  fetchTerminalDailySummary,
   verifyPayment,
   requestOverrideOtp,
   verifyOverrideOtp,
@@ -42,11 +43,19 @@ const {
   setCsrInitial,
   getCsrByInitial,
   getAllCsrInitials,
+  addUserBranch,
+  removeUserBranch,
+  getUserBranches,
+  getAllUserBranches,
 } = require("../data/db");
 const { parseModification } = require("../parser/mod-segmenter");
 const { forceRefresh } = require("../data/loader");
 const SystemProducts = require("../../systemProducts");
-const { PAYMENT_ADJUSTMENT_LIMIT, MANAGER_USER_IDS } = require("../constants");
+const {
+  PAYMENT_ADJUSTMENT_LIMIT,
+  MANAGER_USER_IDS,
+  APP_MANAGER_USER_IDS,
+} = require("../constants");
 const {
   fmt,
   trunc,
@@ -68,6 +77,7 @@ const {
   buildSummaryModal,
   buildSummaryChannelBlocks,
   buildDailyReportBlocks,
+  buildTerminalDailySummaryBlocks,
   buildUnconfirmedOrdersBlocks,
   buildUnconfirmedOrdersModal,
   buildWeeklyReportBlocks,
@@ -283,7 +293,7 @@ async function handleParseOrderSubmit({ ack, body, view, client }) {
     ],
   });
 
-  const order = await parse(rawText);
+  const order = await parse(rawText, getUserBranches(submitterId));
   order.paymentStatus = "verifying";
   order.parsedByInitial = extractInitial(rawText);
   order.parsedBy = resolveParsedBy(order.parsedByInitial, submitterId);
@@ -343,7 +353,7 @@ async function handleMentionOrder({ event, client }) {
     ],
   });
 
-  const order = await parse(rawText);
+  const order = await parse(rawText, getUserBranches(event.user));
   order.slackRootTs = event.ts; // thread root = the mention ts, not the bot's reply ts
   order.paymentStatus = "verifying";
   order.parsedByInitial = extractInitial(rawText);
@@ -504,9 +514,14 @@ async function handleProductSearchOptions({ options, ack }) {
 
 // ── External select options: zone search ─────────────────────────────────────
 
-async function handleZoneSearchOptions({ options, ack }) {
+async function handleZoneSearchOptions({ options, body, ack }) {
+  const userBranches = getUserBranches(body?.user?.id);
   const query = normalize(options.value || "").trim();
-  const nonSurge = (store.getCities().namedZones || []).filter((z) => !z.isSurge);
+  let nonSurge = (store.getCities().namedZones || []).filter((z) => !z.isSurge);
+  if (userBranches.length) {
+    const allowed = new Set(userBranches.map((b) => b.toLowerCase()));
+    nonSurge = nonSurge.filter((z) => allowed.has((z.branch || "").toLowerCase()));
+  }
 
   let results;
   if (query.length < 2) {
@@ -968,7 +983,7 @@ async function handleParseAnyway({ ack, body, client }) {
     ],
   });
 
-  const order = await parse(pending.rawText);
+  const order = await parse(pending.rawText, getUserBranches(pending.userId));
   order.paymentStatus = "verifying";
   order.parsedByInitial = extractInitial(pending.rawText);
   order.parsedBy = resolveParsedBy(order.parsedByInitial, pending.userId);
@@ -1058,7 +1073,7 @@ async function handleThreadMessage({ event, client }) {
 
   let mod;
   try {
-    mod = await parseModification(rawText, confirmedOrder);
+    mod = await parseModification(rawText, confirmedOrder, getUserBranches(event.user));
   } catch (err) {
     await client.chat.update({
       channel: channelId,
@@ -1784,11 +1799,18 @@ async function handleCitiesCommand({ command, ack, client }) {
   });
 }
 
-async function handleCitiesSearchOptions({ options, ack }) {
+async function handleCitiesSearchOptions({ options, body, ack }) {
+  const userBranches = getUserBranches(body?.user?.id);
   const query = normalize(options.value || "").trim();
   const cities = store.getCities();
-  const zones = (cities.namedZones || []).filter((z) => !z.isSurge);
-  const rideHailTiers = cities.rideHailTiers || [];
+  let zones = (cities.namedZones || []).filter((z) => !z.isSurge);
+  let rideHailTiers = cities.rideHailTiers || [];
+  if (userBranches.length) {
+    const allowed = new Set(userBranches.map((b) => b.toLowerCase()));
+    const matchesBranch = (z) => allowed.has((z.branch || "").toLowerCase());
+    zones = zones.filter(matchesBranch);
+    rideHailTiers = rideHailTiers.filter(matchesBranch);
+  }
   const allOptions = [...zones, ...rideHailTiers];
 
   let results;
@@ -1902,6 +1924,7 @@ async function handleSummaryCommand({ command, ack, client }) {
 
 // ── /daily-summary command ────────────────────────────────────────────────────
 
+// Usage: /daily-summary [main|restaurant|terminal] [offsetDays]  (either order, both optional — defaults to main, today)
 async function handleDailySummaryCommand({ command, ack, client }) {
   await ack();
 
@@ -1909,8 +1932,14 @@ async function handleDailySummaryCommand({ command, ack, client }) {
   const userId = command.user_id;
 
   try {
-    const arg = (command.text || "").trim();
-    const offsetDays = /^-?\d+$/.test(arg) ? parseInt(arg, 10) : 0;
+    const tokens = (command.text || "").trim().split(/\s+/).filter(Boolean);
+    let source = "main";
+    let offsetDays = 0;
+    for (const token of tokens) {
+      if (/^main$/i.test(token)) source = "main";
+      else if (/^(restaurant|terminal)$/i.test(token)) source = "restaurant";
+      else if (/^-?\d+$/.test(token)) offsetDays = parseInt(token, 10);
+    }
 
     const lagosDate = (off) =>
       new Date(Date.now() + off * 86_400_000).toLocaleDateString("en-CA", {
@@ -1926,6 +1955,32 @@ async function handleDailySummaryCommand({ command, ack, client }) {
       month: "long",
       year: "numeric",
     });
+
+    if (source === "restaurant") {
+      const terminalData = await fetchTerminalDailySummary(
+        lagosDate(offsetDays),
+        lagosDate(offsetDays),
+      ).catch((err) => {
+        console.error("[daily-summary] Terminal API:", err.message);
+        return null;
+      });
+
+      if (!terminalData || (terminalData.orders?.total || 0) === 0) {
+        await client.chat.postEphemeral({
+          channel: channelId,
+          user: userId,
+          text: `📊 No restaurant (terminal) order data available for ${dateLabel}.`,
+        });
+        return;
+      }
+
+      await client.chat.postMessage({
+        channel: channelId,
+        text: `🏬 Restaurant Order Daily Summary — ${dateLabel}`,
+        blocks: buildTerminalDailySummaryBlocks(terminalData, dateLabel),
+      });
+      return;
+    }
 
     // Fetch kitchen data and CSR orders in parallel
     const [kitchenData, yesterdayData, allOrders] = await Promise.all([
@@ -2521,6 +2576,162 @@ async function handleSetInitialCommand({ command, ack, respond }) {
   await respond({
     response_type: "in_channel",
     text: `✅ *#${initial}* → *${name}* registered.`,
+  });
+}
+
+// ── /set-branch command (developer-only: assign a Slack user to a branch) ────
+
+function validBranchList() {
+  const cities = store.getCities();
+  return [
+    ...new Set(
+      [
+        ...(cities.namedZones || []),
+        ...(cities.pickupRows || []),
+        ...(cities.rideHailTiers || []),
+      ]
+        .map((z) => z.branch)
+        .filter(Boolean),
+    ),
+  ];
+}
+
+function parseTargetUserId(rawUser) {
+  const mentionMatch = rawUser.match(/^<@([A-Z0-9]+)(?:\|[^>]*)?>$/i);
+  const targetUserId = mentionMatch ? mentionMatch[1] : rawUser.toUpperCase();
+  return /^[UW][A-Z0-9]+$/.test(targetUserId) ? targetUserId : null;
+}
+
+// Usage:
+//   /set-branch                          → list all assignments
+//   /set-branch @user lekki              → add a branch (additive)
+//   /set-branch @user lekki,opebi        → add several at once
+//   /set-branch remove @user lekki       → remove one branch
+//   /set-branch remove @user             → remove all branches (full unassign)
+async function handleSetBranchCommand({ command, ack, respond }) {
+  await ack();
+
+  if (!APP_MANAGER_USER_IDS.has(command.user_id)) {
+    await respond({
+      response_type: "ephemeral",
+      text: "⚠️ Only app managers can manage branch assignments.",
+    });
+    return;
+  }
+
+  const USAGE =
+    "Usage: `/set-branch @user lekki` (add), `/set-branch @user lekki,opebi` (add several), " +
+    "`/set-branch remove @user lekki` (remove one), `/set-branch remove @user` (remove all)";
+
+  const text = (command.text || "").trim();
+
+  if (!text) {
+    const all = getAllUserBranches();
+    if (all.length === 0) {
+      await respond({ response_type: "ephemeral", text: `_No branch assignments yet._\n${USAGE}` });
+      return;
+    }
+    const byUser = new Map();
+    for (const r of all) {
+      if (!byUser.has(r.slack_user_id)) byUser.set(r.slack_user_id, []);
+      byUser.get(r.slack_user_id).push(r.branch);
+    }
+    const lines = [...byUser.entries()]
+      .map(([userId, branches]) => `<@${userId}> → *${branches.join(", ")}*`)
+      .join("\n");
+    await respond({ response_type: "ephemeral", text: `*Branch assignments:*\n${lines}` });
+    return;
+  }
+
+  const parts = text.split(/\s+/);
+  const isRemove = parts[0].toLowerCase() === "remove";
+  if (isRemove) parts.shift();
+
+  const rawUser = parts[0];
+  const rawBranchArg = parts.slice(1).join(" ");
+
+  if (!rawUser) {
+    await respond({ response_type: "ephemeral", text: `⚠️ Please mention a user.\n${USAGE}` });
+    return;
+  }
+
+  const targetUserId = parseTargetUserId(rawUser);
+  if (!targetUserId) {
+    await respond({
+      response_type: "ephemeral",
+      text: `⚠️ Please mention a user or give a raw Slack user ID.\n${USAGE}`,
+    });
+    return;
+  }
+
+  const validBranches = validBranchList();
+
+  if (isRemove) {
+    if (!rawBranchArg) {
+      const removed = removeUserBranch(targetUserId);
+      if (!removed) {
+        await respond({ response_type: "ephemeral", text: `⚠️ <@${targetUserId}> has no branch assignment.` });
+        return;
+      }
+      await respond({
+        response_type: "in_channel",
+        text: `✅ Removed all branch assignments for <@${targetUserId}> — they'll see all branches again.`,
+      });
+      return;
+    }
+
+    const matchedBranch = validBranches.find((b) => b.toLowerCase() === rawBranchArg.toLowerCase());
+    if (!matchedBranch) {
+      await respond({
+        response_type: "ephemeral",
+        text: `⚠️ Unknown branch "${rawBranchArg}". Valid branches: ${validBranches.join(", ") || "(none loaded yet)"}`,
+      });
+      return;
+    }
+
+    const removed = removeUserBranch(targetUserId, matchedBranch);
+    if (!removed) {
+      await respond({ response_type: "ephemeral", text: `⚠️ <@${targetUserId}> isn't assigned to *${matchedBranch}*.` });
+      return;
+    }
+
+    const remaining = getUserBranches(targetUserId);
+    await respond({
+      response_type: "in_channel",
+      text: remaining.length
+        ? `✅ Removed *${matchedBranch}* from <@${targetUserId}>. Remaining: *${remaining.join(", ")}*.`
+        : `✅ Removed *${matchedBranch}* from <@${targetUserId}> — they'll see all branches again.`,
+    });
+    return;
+  }
+
+  if (!rawBranchArg) {
+    await respond({ response_type: "ephemeral", text: `⚠️ Please specify at least one branch.\n${USAGE}` });
+    return;
+  }
+
+  const requestedBranches = rawBranchArg.split(",").map((b) => b.trim()).filter(Boolean);
+  const resolved = [];
+  const unknown = [];
+  for (const rb of requestedBranches) {
+    const matched = validBranches.find((b) => b.toLowerCase() === rb.toLowerCase());
+    if (matched) resolved.push(matched);
+    else unknown.push(rb);
+  }
+
+  if (unknown.length) {
+    await respond({
+      response_type: "ephemeral",
+      text: `⚠️ Unknown branch(es): ${unknown.join(", ")}. Valid branches: ${validBranches.join(", ") || "(none loaded yet)"}`,
+    });
+    return;
+  }
+
+  for (const b of resolved) addUserBranch(targetUserId, b, command.user_id);
+  const all = getUserBranches(targetUserId);
+  await respond({
+    response_type: "in_channel",
+    text: `✅ <@${targetUserId}> now assigned to: *${all.join(", ")}* — their order parsing and \`/cities\` search are scoped to ${all.length > 1 ? "these branches" : "this branch"}.`,
   });
 }
 
@@ -3330,6 +3541,7 @@ module.exports = {
   handleAmountAdjust,
   handleAmountAdjustSubmit,
   handleSetInitialCommand,
+  handleSetBranchCommand,
   handleAvailabilityCommand,
   handleAvailabilitySearch,
   handleAvailabilityCopyProduct,

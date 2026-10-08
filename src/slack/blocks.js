@@ -1962,6 +1962,57 @@ function buildDailyReportBlocks(
   return blocks;
 }
 
+// ── Restaurant (Terminal/POS) Order Daily Summary ─────────────────────────────
+// Separate from the online/Slack-parsed Daily Operations Report above — sourced
+// from zupa-api's terminal_orders + terminal_order_cart_activities (staff
+// attribution is each order's earliest cart activity's staffName).
+function buildTerminalDailySummaryBlocks(terminalData, dateLabel) {
+  const t = terminalData || {};
+  const orders = t.orders || {};
+  const revenue = t.revenue || {};
+  const byStaff = t.byStaff || [];
+  const blocks = [];
+
+  blocks.push({
+    type: "header",
+    text: { type: "plain_text", text: "🏬  Restaurant Order Daily Summary" },
+  });
+  blocks.push({
+    type: "context",
+    elements: [{ type: "mrkdwn", text: `_${dateLabel}_` }],
+  });
+  blocks.push({ type: "divider" });
+
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: [
+        "*🧾  Order Summary*",
+        `• Total Orders: *${orders.total ?? 0}*`,
+        `• Paid: *${orders.paid ?? 0}*`,
+        `• Unpaid: *${orders.unpaid ?? 0}*`,
+        `• Revenue: *${fmt(revenue.total)}*`,
+      ].join("\n"),
+    },
+  });
+  blocks.push({ type: "divider" });
+
+  if (byStaff.length > 0) {
+    const lines = byStaff.map(
+      (s) => `• *${s.staffName}* — ${s.orders} order${s.orders !== 1 ? "s" : ""}  ·  ${fmt(s.revenue)}`,
+    );
+    blocks.push({
+      type: "section",
+      text: { type: "mrkdwn", text: ["*👤  By Staff*", ...lines].join("\n") },
+    });
+    blocks.push({ type: "divider" });
+  }
+
+  blocks.push(_footer);
+  return blocks;
+}
+
 // ── Orders with unconfirmed payment — shared list renderer (modal + channel post) ─
 // enrichedOrders: kitchen-API orders (payment not yet confirmed) merged with our own CSR/OTP records.
 function buildUnconfirmedOrdersBlocks(unconfirmed, enrichedOrders, dateLabel) {
@@ -2679,6 +2730,7 @@ module.exports = {
   buildSummaryModal,
   buildSummaryChannelBlocks,
   buildDailyReportBlocks,
+  buildTerminalDailySummaryBlocks,
   buildUnconfirmedOrdersBlocks,
   buildUnconfirmedOrdersModal,
   buildWeeklyReportBlocks,

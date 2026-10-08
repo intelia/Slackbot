@@ -94,7 +94,7 @@ function resolveItem(itemLine) {
   };
 }
 
-async function parse(rawMessage) {
+async function parse(rawMessage, restrictBranches) {
   const seg = await segment(rawMessage);
 
   // Resolve fulfillment
@@ -109,7 +109,7 @@ async function parse(rawMessage) {
   };
 
   if (fulfillment.type === 'pickup') {
-    const pickupRow = matchPickup(fulfillment.address, fulfillment.branch);
+    const pickupRow = matchPickup(fulfillment.address, fulfillment.branch, restrictBranches);
     if (pickupRow) {
       fulfillment.zoneId = pickupRow.id;
       fulfillment.zoneName = pickupRow.name;
@@ -119,7 +119,7 @@ async function parse(rawMessage) {
     }
   } else if (fulfillment.type === 'delivery' || fulfillment.address) {
     fulfillment.type = 'delivery';
-    const zone = matchZone(fulfillment.address);
+    const zone = matchZone(fulfillment.address, restrictBranches);
     if (zone) {
       fulfillment.zoneId = zone.id;
       fulfillment.zoneName = zone.name;

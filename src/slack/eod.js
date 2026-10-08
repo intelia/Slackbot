@@ -11,9 +11,9 @@ const {
   getMetaValue,
   setMetaValue,
 } = require('../data/db');
-const { buildDailyReportBlocks, buildWeeklyReportBlocks, buildMonthlyReportBlocks } = require('./blocks');
+const { buildDailyReportBlocks, buildTerminalDailySummaryBlocks, buildWeeklyReportBlocks, buildMonthlyReportBlocks } = require('./blocks');
 const { clearExpiredPendingOrders } = require('./handlers');
-const { fetchKitchenSummary } = require('../zupa');
+const { fetchKitchenSummary, fetchTerminalDailySummary } = require('../zupa');
 const { CURRENT_VERSION, getChangesSince } = require('../changelog');
 
 // ── Restart / update notification ─────────────────────────────────────────────
@@ -222,6 +222,48 @@ async function postEodSummaries(client) {
   if (cleared > 0) console.log(`[eod] Auto-cleared ${cleared} expired pending order(s).`);
 }
 
+// ── Restaurant (Terminal/POS) Order Daily Summary ─────────────────────────────
+// Separate data source from the Daily Operations Report above (terminal orders
+// never pass through this bot, so there's no per-channel targeting to derive —
+// posts to NOTIFY_CHANNELS directly, the same destination the report above
+// falls back to).
+async function postTerminalDailySummary(client) {
+  const dateLabel = new Date().toLocaleDateString('en-NG', {
+    timeZone: 'Africa/Lagos', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+  });
+  const today = lagosDateString(0);
+
+  let terminalData = null;
+  try {
+    terminalData = await fetchTerminalDailySummary(today, today);
+  } catch (err) {
+    console.error('[eod] Terminal daily summary failed:', err.message);
+    return;
+  }
+
+  if (!terminalData || (terminalData.orders?.total || 0) === 0) {
+    console.log('[eod] No terminal order data today — skipping restaurant summary.');
+    return;
+  }
+
+  const targets = (process.env.NOTIFY_CHANNELS || '').split(',').map(s => s.trim()).filter(Boolean);
+  if (targets.length === 0) {
+    console.log('[eod] No channels for restaurant summary — NOTIFY_CHANNELS is unset.');
+    return;
+  }
+
+  console.log(`[eod] Posting restaurant order summary to ${targets.length} channel(s).`);
+  const results = await Promise.allSettled(targets.map(async channelId => {
+    await client.chat.postMessage({
+      channel: channelId,
+      text: `🏬 Restaurant Order Daily Summary — ${dateLabel}`,
+      blocks: buildTerminalDailySummaryBlocks(terminalData, dateLabel),
+    });
+    console.log(`[eod] ✓ Restaurant summary posted to ${channelId}`);
+  }));
+  _logFailures('Restaurant summary', targets, results);
+}
+
 // ── Weekly Operations Report ──────────────────────────────────────────────────
 
 async function postWeeklySummary(client) {
@@ -338,6 +380,12 @@ function scheduleEodSummary(client) {
     try { await postEodSummaries(client); } catch (err) { console.error('[eod] Daily report failed:', err); }
   }, { timezone: 'Africa/Lagos' });
 
+  // Restaurant (terminal) order summary — same close time as the daily report
+  cron.schedule('0 21 * * *', async () => {
+    console.log('[eod] 9:00pm Lagos — running restaurant order summary…');
+    try { await postTerminalDailySummary(client); } catch (err) { console.error('[eod] Restaurant summary failed:', err); }
+  }, { timezone: 'Africa/Lagos' });
+
   // Weekly report at 9:05pm every Sunday
   cron.schedule('5 21 * * 0', async () => {
     console.log('[eod] 9:05pm Sunday Lagos — running weekly report…');
@@ -350,12 +398,13 @@ function scheduleEodSummary(client) {
     try { await postMonthlySummary(client); } catch (err) { console.error('[eod] Monthly report failed:', err); }
   }, { timezone: 'Africa/Lagos' });
 
-  console.log('[eod] Scheduled: daily 9:00pm, weekly (Sun) 9:05pm, monthly (last-day) 9:10pm — all Africa/Lagos.');
+  console.log('[eod] Scheduled: daily 9:00pm (+ restaurant summary), weekly (Sun) 9:05pm, monthly (last-day) 9:10pm — all Africa/Lagos.');
 }
 
 module.exports = {
   scheduleEodSummary,
   postEodSummaries,
+  postTerminalDailySummary,
   postWeeklySummary,
   postMonthlySummary,
   postRestartNotification,
