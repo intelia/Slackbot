@@ -4,6 +4,12 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: "1.22.0",
+    notes: [
+      "Requests to Zupa now identify which branch they're coming from — resolved from the order's own branch, or the acting CSR's assigned branch (/set-branch) when there's no order in scope",
+    ],
+  },
+  {
     version: "1.21.0",
     notes: [
       "Added a Restaurant Order Daily Summary (terminal/POS sales, broken down by staff) — posts automatically at 9pm alongside the existing Daily Operations Report, and /daily-summary now accepts an optional source: /daily-summary restaurant for terminal orders, /daily-summary main (default) for the usual online-order report",

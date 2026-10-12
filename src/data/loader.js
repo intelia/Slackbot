@@ -130,9 +130,10 @@ function cleanCities(raw) {
 // ── Fetch and refresh ─────────────────────────────────────────────────────────
 
 async function loadFromAPI() {
-  const [rawProducts, rawCities] = await Promise.all([
+  const [rawProducts, rawCities, branches] = await Promise.all([
     SystemProducts.fetchProducts(),
     SystemProducts.getDeliveryCities(),
+    SystemProducts.getBranches(),
   ]);
 
   const products = cleanProducts(rawProducts);
@@ -148,15 +149,16 @@ async function loadFromAPI() {
     );
   }
 
-  return { products, cities };
+  return { products, cities, branches };
 }
 
 // Call once at startup (and periodically via refreshIfStale).
 // Falls back to the pre-generated static files if the API is unreachable.
 async function init() {
   try {
-    const { products, cities } = await loadFromAPI();
+    const { products, cities, branches } = await loadFromAPI();
     store.setData(products, cities);
+    store.setBranches(branches);
 
     // Rebuild the matcher's product index with fresh data
     const { refreshIndexes } = require("../parser/matcher");
@@ -186,8 +188,9 @@ async function refreshIfStale() {
 // Force-fetches from the API regardless of cache state.
 // Returns { products, zones } counts on success; throws on failure.
 async function forceRefresh() {
-  const { products, cities } = await loadFromAPI();
+  const { products, cities, branches } = await loadFromAPI();
   store.setData(products, cities);
+  store.setBranches(branches);
   const { refreshIndexes } = require("../parser/matcher");
   refreshIndexes();
   lastLoadedAt = Date.now();

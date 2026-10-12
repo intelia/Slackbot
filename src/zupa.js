@@ -2,6 +2,24 @@
 
 const path = require("path");
 const SystemProducts = require(path.join(__dirname, "..", "systemProducts"));
+const store = require("./data/store");
+const { getUserBranches } = require("./data/db");
+
+// Resolves the Zupa branch UUID to send as the X-Branch-Id header.
+// Prefers the order's own branch (e.g. order.fulfillment.branch); falls back to
+// the acting CSR's assigned branch when they have exactly one (ambiguous with
+// 0 or 2+, so no header is sent in that case). Returns null if nothing resolves.
+function resolveBranchId({ branch, slackUserId } = {}) {
+  if (branch) {
+    const id = store.getBranchId(branch);
+    if (id) return id;
+  }
+  if (slackUserId) {
+    const csrBranches = getUserBranches(slackUserId);
+    if (csrBranches.length === 1) return store.getBranchId(csrBranches[0]);
+  }
+  return null;
+}
 
 // Convert local phone format (09028920538) to international (+2349028920538)
 function formatPhone(phone) {
@@ -75,7 +93,8 @@ async function pushToZupa(order, confirmedBy) {
     JSON.stringify(payload, null, 2),
   );
 
-  const res = await SystemProducts.createOrder(payload);
+  const branchId = resolveBranchId({ branch: order.fulfillment?.branch, slackUserId: confirmedBy });
+  const res = await SystemProducts.createOrder(payload, branchId);
 
   if (!res) throw new Error("No response from Zupa API");
   if (res.status === "error")
@@ -142,7 +161,8 @@ async function pushModification(confirmedOrder, mod, modifiedBy) {
     JSON.stringify(payload, null, 2),
   );
 
-  const res = await SystemProducts.modifyOrder(payload);
+  const branchId = resolveBranchId({ branch: confirmedOrder.fulfillment?.branch, slackUserId: modifiedBy });
+  const res = await SystemProducts.modifyOrder(payload, branchId);
   if (!res) throw new Error("No response from Zupa API");
   if (res.status === "error")
     throw new Error(res.message || "Zupa API returned an error");
@@ -152,13 +172,14 @@ async function pushModification(confirmedOrder, mod, modifiedBy) {
 
 // ── Payment verification & OTP ────────────────────────────────────────────────
 
-async function paymentFetch(endpoint, body) {
+async function paymentFetch(endpoint, body, branchId = null) {
   const url = `${process.env.ZUPA_API}/${endpoint}`;
   const res = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${process.env.ZUPA_API_TOKEN}`,
+      ...(branchId && { "X-Branch-Id": branchId }),
     },
     body: JSON.stringify(body),
   });
@@ -171,12 +192,14 @@ async function paymentFetch(endpoint, body) {
 
 // Returns payment object if matched, null if no match (404), throws on other errors.
 // opts: { deliveryPrice, couponCode } — only sent for full-order verification (not modification/adjustment deltas).
+// opts: { branch, slackUserId } — used to resolve the X-Branch-Id header.
 async function verifyPayment(customerName, recipientName, totalPrice, opts = {}) {
   const body = { customerName, recipientName, totalPrice };
   if (opts.deliveryPrice != null) body.deliveryPrice = opts.deliveryPrice;
   if (opts.couponCode) body.couponCode = opts.couponCode;
 
-  const { status, data } = await paymentFetch("payment/order/verify-payment", body);
+  const branchId = resolveBranchId({ branch: opts.branch, slackUserId: opts.slackUserId });
+  const { status, data } = await paymentFetch("payment/order/verify-payment", body, branchId);
   if (status === 200 && data.matched) return data;
   if (status === 404) return null;
   throw new Error(
@@ -188,7 +211,8 @@ async function verifyPayment(customerName, recipientName, totalPrice, opts = {})
 // order: optional { customer, recipient, orderTotal, items: [{ productName, sizeName, qty, lineTotal }] }
 // slackThreadLink: optional permalink to the Slack thread where the OTP was requested;
 //   Zupa includes it as a "Go to thread" button in the Slack OTP notification it sends.
-async function requestOverrideOtp(clientReference, order = {}, slackThreadLink = null) {
+// ctx: { branch, slackUserId } — used to resolve the X-Branch-Id header.
+async function requestOverrideOtp(clientReference, order = {}, slackThreadLink = null, ctx = {}) {
   const body = { clientReference };
 
   const customerName = order.customer?.name || null;
@@ -210,7 +234,11 @@ async function requestOverrideOtp(clientReference, order = {}, slackThreadLink =
 
   if (slackThreadLink) body.slackThreadLink = slackThreadLink;
 
-  const { status, data } = await paymentFetch("payment/order/override-otp", body);
+  const branchId = resolveBranchId({
+    branch: ctx.branch || order.fulfillment?.branch,
+    slackUserId: ctx.slackUserId,
+  });
+  const { status, data } = await paymentFetch("payment/order/override-otp", body, branchId);
   if (status === 200 && data.success) return data.slackMessages || [];
   throw new Error(data.message || `OTP request failed (HTTP ${status})`);
 }
@@ -218,22 +246,30 @@ async function requestOverrideOtp(clientReference, order = {}, slackThreadLink =
 // Authorises an OTP override without requiring the code — used when the manager
 // clicks "Authorize" directly in the Slack OTP notification.
 // The backend must confirm that a valid, unexpired OTP was previously issued for this reference.
-async function authorizeOtpOverride(clientReference) {
-  const { status, data } = await paymentFetch("payment/order/override-otp/authorize", {
-    clientReference,
-  });
+// ctx: { slackUserId } — the order isn't looked up yet at this point, so branch can only
+// come from the authorizing manager's own CSR branch assignment.
+async function authorizeOtpOverride(clientReference, ctx = {}) {
+  const branchId = resolveBranchId({ slackUserId: ctx.slackUserId });
+  const { status, data } = await paymentFetch(
+    "payment/order/override-otp/authorize",
+    { clientReference },
+    branchId,
+  );
   if (status === 200 && data.success) return true;
   throw new Error(data.message || `OTP authorization failed (HTTP ${status})`);
 }
 
 // Verifies the OTP. Returns true on success, throws with API message on failure.
-async function verifyOverrideOtp(clientReference, otp) {
+// ctx: { branch, slackUserId } — used to resolve the X-Branch-Id header.
+async function verifyOverrideOtp(clientReference, otp, ctx = {}) {
+  const branchId = resolveBranchId({ branch: ctx.branch, slackUserId: ctx.slackUserId });
   const { status, data } = await paymentFetch(
     "payment/order/override-otp/verify",
     {
       clientReference,
       otp,
     },
+    branchId,
   );
   if (status === 200 && data.success) return true;
   throw new Error(data.message || `OTP verification failed (HTTP ${status})`);
@@ -243,18 +279,23 @@ async function verifyOverrideOtp(clientReference, otp) {
 // For a single day, pass the same date for both startDate and endDate.
 // Throws on non-2xx; callers should .catch(() => null) for optional periods.
 // Returns the receipt object if found, null if not found, throws on API errors.
-async function lookupReceipt(query) {
-  const { status, data } = await paymentFetch("payment/order/receipt/lookup", query);
+// ctx: { slackUserId } — no order is in scope for a receipt lookup, so branch can
+// only come from the searching CSR's own branch assignment.
+async function lookupReceipt(query, ctx = {}) {
+  const branchId = resolveBranchId({ slackUserId: ctx.slackUserId });
+  const { status, data } = await paymentFetch("payment/order/receipt/lookup", query, branchId);
   if (status === 200 && data.found) return data.receipt;
   if (status === 404 || (status === 200 && !data.found)) return null;
   throw new Error(data?.message || `Receipt lookup failed (HTTP ${status})`);
 }
 
 // Locks the receipt to an order. Throws with .code === "ALREADY_MATCHED" on 409.
-async function confirmReceiptMatch(transactionRef, orderNumber) {
+// ctx: { branch, slackUserId } — used to resolve the X-Branch-Id header.
+async function confirmReceiptMatch(transactionRef, orderNumber, ctx = {}) {
   const body = { transactionRef };
   if (orderNumber) body.orderNumber = orderNumber;
-  const { status, data } = await paymentFetch("payment/order/receipt/confirm-match", body);
+  const branchId = resolveBranchId({ branch: ctx.branch, slackUserId: ctx.slackUserId });
+  const { status, data } = await paymentFetch("payment/order/receipt/confirm-match", body, branchId);
   if (status === 200) return data;
   if (status === 409) {
     throw Object.assign(
@@ -265,13 +306,19 @@ async function confirmReceiptMatch(transactionRef, orderNumber) {
   throw new Error(data?.message || `Receipt confirm failed (HTTP ${status})`);
 }
 
-async function fetchKitchenSummary(startDate, endDate) {
+// ctx: { slackUserId } — these aggregate across all branches, so branch (when sent)
+// can only come from the requesting CSR's own single assigned branch.
+async function fetchKitchenSummary(startDate, endDate, ctx = {}) {
+  const branchId = resolveBranchId({ slackUserId: ctx.slackUserId });
   const url = new URL(`${process.env.ZUPA_API}/kitchen-api/daily-summary`);
   url.searchParams.set("startDate", startDate);
   url.searchParams.set("endDate", endDate);
   console.log(`[Zupa] Fetching kitchen summary ${startDate}→${endDate}`);
   const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${process.env.ZUPA_API_TOKEN}` },
+    headers: {
+      Authorization: `Bearer ${process.env.ZUPA_API_TOKEN}`,
+      ...(branchId && { "X-Branch-Id": branchId }),
+    },
   });
   console.log(`[Zupa] Kitchen summary response: ${res.status}`);
   if (!res.ok) {
@@ -285,13 +332,17 @@ async function fetchKitchenSummary(startDate, endDate) {
   return result;
 }
 
-async function fetchTerminalDailySummary(startDate, endDate) {
+async function fetchTerminalDailySummary(startDate, endDate, ctx = {}) {
+  const branchId = resolveBranchId({ slackUserId: ctx.slackUserId });
   const url = new URL(`${process.env.ZUPA_API}/kitchen-api/terminal-daily-summary`);
   url.searchParams.set("startDate", startDate);
   url.searchParams.set("endDate", endDate);
   console.log(`[Zupa] Fetching terminal daily summary ${startDate}→${endDate}`);
   const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${process.env.ZUPA_API_TOKEN}` },
+    headers: {
+      Authorization: `Bearer ${process.env.ZUPA_API_TOKEN}`,
+      ...(branchId && { "X-Branch-Id": branchId }),
+    },
   });
   console.log(`[Zupa] Terminal daily summary response: ${res.status}`);
   if (!res.ok) {

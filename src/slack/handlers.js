@@ -780,6 +780,7 @@ function verifyPaymentBackground(client, order, channelId, ts) {
   verifyPayment(customerName, recipientName, order.orderTotal, {
     deliveryPrice: order.fulfillment?.fee,
     couponCode: order.couponCode,
+    branch: order.fulfillment?.branch,
   })
     .then((match) => {
       const current = getOrder(channelId, ts);
@@ -936,7 +937,12 @@ async function handleConfirmOrder({ ack, body, action, client }) {
         customerName,
         recipientName,
         order.orderTotal,
-        { deliveryPrice: order.fulfillment?.fee, couponCode: order.couponCode },
+        {
+          deliveryPrice: order.fulfillment?.fee,
+          couponCode: order.couponCode,
+          branch: order.fulfillment?.branch,
+          slackUserId: body.user.id,
+        },
       );
     } catch (err) {
       console.log(`error verifying payment ${err}`);
@@ -1238,7 +1244,10 @@ async function handleModConfirm({ ack, body, client }) {
 
     let paymentMatch;
     try {
-      paymentMatch = await verifyPayment(customerName, recipientName, modIncrease);
+      paymentMatch = await verifyPayment(customerName, recipientName, modIncrease, {
+        branch: confirmedOrder.fulfillment?.branch,
+        slackUserId: modifiedBy,
+      });
     } catch (err) {
       await ephem(client, { channel: channelId, user: modifiedBy, threadTs, text: `⚠️ Payment verification error: ${err.message}` });
       return;
@@ -1692,7 +1701,10 @@ async function handleModRequestOtp({ ack, body, client }) {
   } catch (_) {}
 
   try {
-    await requestOverrideOtp(confirmedOrder.clientReference, otpOrder, slackThreadLink);
+    await requestOverrideOtp(confirmedOrder.clientReference, otpOrder, slackThreadLink, {
+      branch: confirmedOrder.fulfillment?.branch,
+      slackUserId: body.user.id,
+    });
   } catch (err) {
     await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: `⚠️ Could not send OTP: ${err.message}` });
     return;
@@ -1961,6 +1973,7 @@ async function handleDailySummaryCommand({ command, ack, client }) {
         fetchTerminalDailySummary(
           lagosDate(offsetDays),
           lagosDate(offsetDays),
+          { slackUserId: userId },
         ).catch((err) => {
           console.error("[daily-summary] Terminal API:", err.message);
           return null;
@@ -1968,6 +1981,7 @@ async function handleDailySummaryCommand({ command, ack, client }) {
         fetchTerminalDailySummary(
           lagosDate(offsetDays - 1),
           lagosDate(offsetDays - 1),
+          { slackUserId: userId },
         ).catch(() => null),
       ]);
 
@@ -1990,15 +2004,16 @@ async function handleDailySummaryCommand({ command, ack, client }) {
 
     // Fetch kitchen data and CSR orders in parallel
     const [kitchenData, yesterdayData, allOrders] = await Promise.all([
-      fetchKitchenSummary(lagosDate(offsetDays), lagosDate(offsetDays)).catch(
-        (err) => {
-          console.error("[daily-summary] Kitchen API:", err.message);
-          return null;
-        },
-      ),
+      fetchKitchenSummary(lagosDate(offsetDays), lagosDate(offsetDays), {
+        slackUserId: userId,
+      }).catch((err) => {
+        console.error("[daily-summary] Kitchen API:", err.message);
+        return null;
+      }),
       fetchKitchenSummary(
         lagosDate(offsetDays - 1),
         lagosDate(offsetDays - 1),
+        { slackUserId: userId },
       ).catch(() => null),
       Promise.resolve(getAllOrdersToday(offsetDays)),
     ]);
@@ -2043,8 +2058,8 @@ async function handleDailySummaryCommand({ command, ack, client }) {
 // returns the enriched unconfirmed-orders list. Stateless by design — refetched fresh on
 // every click instead of relying on an in-memory cache from when the report was posted,
 // so it survives bot restarts between "posted the report" and "clicked the button".
-async function _loadUnconfirmedOrders(reportDate) {
-  const kitchenData = await fetchKitchenSummary(reportDate, reportDate);
+async function _loadUnconfirmedOrders(reportDate, slackUserId) {
+  const kitchenData = await fetchKitchenSummary(reportDate, reportDate, { slackUserId });
   const unconfirmed = kitchenData?.unconfirmed || { total: 0, totalAmount: 0, orders: [] };
   const { startMs, endMs } = lagosDateBoundsForDate(reportDate);
   const lookup = _buildClientRefLookup(getOrdersForPeriod(startMs, endMs));
@@ -2061,7 +2076,7 @@ async function handleShowUnconfirmedOrders({ ack, body, action, client }) {
 
   let unconfirmed, enriched;
   try {
-    ({ unconfirmed, enriched } = await _loadUnconfirmedOrders(reportDate));
+    ({ unconfirmed, enriched } = await _loadUnconfirmedOrders(reportDate, body.user.id));
   } catch (err) {
     await ephem(client, {
       channel: channelId,
@@ -2089,7 +2104,7 @@ async function handleUnconfirmedOrdersPost({ ack, body, view, client }) {
 
   let unconfirmed, enriched;
   try {
-    ({ unconfirmed, enriched } = await _loadUnconfirmedOrders(reportDate));
+    ({ unconfirmed, enriched } = await _loadUnconfirmedOrders(reportDate, body.user.id));
   } catch (err) {
     await ephem(client, {
       channel: channelId,
@@ -2159,11 +2174,11 @@ async function handleWeeklySummaryCommand({ command, ack, client }) {
     const periodLabel = `Week ${weekNum}  ·  Ending ${endStr}`;
 
     const [kitchenData, prevData] = await Promise.all([
-      fetchKitchenSummary(thisStart, thisEnd).catch((err) => {
+      fetchKitchenSummary(thisStart, thisEnd, { slackUserId: userId }).catch((err) => {
         console.error("[weekly-summary] Kitchen API:", err.message);
         return null;
       }),
-      fetchKitchenSummary(prevStart, prevEnd).catch(() => null),
+      fetchKitchenSummary(prevStart, prevEnd, { slackUserId: userId }).catch(() => null),
     ]);
 
     if (!kitchenData && channelOrders.length === 0) {
@@ -2237,11 +2252,11 @@ async function handleMonthlySummaryCommand({ command, ack, client }) {
     const periodLabel = `${monthLabel}  ·  ${dateLabel}`;
 
     const [kitchenData, prevData] = await Promise.all([
-      fetchKitchenSummary(thisStart, thisEnd).catch((err) => {
+      fetchKitchenSummary(thisStart, thisEnd, { slackUserId: userId }).catch((err) => {
         console.error("[monthly-summary] Kitchen API:", err.message);
         return null;
       }),
-      fetchKitchenSummary(prevStart, prevEnd).catch(() => null),
+      fetchKitchenSummary(prevStart, prevEnd, { slackUserId: userId }).catch(() => null),
     ]);
 
     if (!kitchenData && channelOrders.length === 0) {
@@ -2519,7 +2534,10 @@ async function handleAmountAdjustSubmit({ ack, body, view, client }) {
 
   let match;
   try {
-    match = await verifyPayment(customerName, recipientName, adjustedAmount);
+    match = await verifyPayment(customerName, recipientName, adjustedAmount, {
+      branch: order.fulfillment?.branch,
+      slackUserId: confirmedBy,
+    });
   } catch (err) {
     await ephem(client, {
       channel: channelId, user: confirmedBy, threadTs,
@@ -2801,7 +2819,9 @@ async function handleRequestOtp({ ack, body, client }) {
 
   let slackMessages = [];
   try {
-    slackMessages = await requestOverrideOtp(order.clientReference, order, slackThreadLink);
+    slackMessages = await requestOverrideOtp(order.clientReference, order, slackThreadLink, {
+      slackUserId: body.user.id,
+    });
   } catch (err) {
     await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: `⚠️ Could not send OTP: ${err.message}` });
     return;
@@ -2838,7 +2858,9 @@ async function handleResendOtpModal({ ack, body, view, client }) {
     notice = "⚠️  Order not found — close this modal and re-parse the order.";
   } else {
     try {
-      await requestOverrideOtp(order.clientReference, order, meta.slackThreadLink || null);
+      await requestOverrideOtp(order.clientReference, order, meta.slackThreadLink || null, {
+        slackUserId: meta.confirmedBy || body.user.id,
+      });
       notice =
         "✅  *OTP resent.* Enter the new 6-digit code sent to the operator.";
     } catch (err) {
@@ -2907,7 +2929,10 @@ async function handlePaymentNameSubmit({ ack, body, view, client }) {
     const { confirmedOrder, mod } = modState;
     let match;
     try {
-      match = await verifyPayment(paymentName, paymentName, mod.modIncrease);
+      match = await verifyPayment(paymentName, paymentName, mod.modIncrease, {
+        branch: confirmedOrder.fulfillment?.branch,
+        slackUserId: confirmedBy || body.user.id,
+      });
     } catch (err) {
       await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: `⚠️ Payment check failed: ${err.message}` });
       return;
@@ -2942,6 +2967,8 @@ async function handlePaymentNameSubmit({ ack, body, view, client }) {
     match = await verifyPayment(paymentName, paymentName, order.orderTotal, {
       deliveryPrice: order.fulfillment?.fee,
       couponCode: order.couponCode,
+      branch: order.fulfillment?.branch,
+      slackUserId: body.user.id,
     });
   } catch (err) {
     await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: `⚠️ Payment check failed: ${err.message}` });
@@ -2994,7 +3021,10 @@ async function handleOtpVerifySubmit({ ack, body, view, client }) {
     }
 
     try {
-      await verifyOverrideOtp(modState.confirmedOrder.clientReference, otp);
+      await verifyOverrideOtp(modState.confirmedOrder.clientReference, otp, {
+        branch: modState.confirmedOrder.fulfillment?.branch,
+        slackUserId: confirmedBy || body.user.id,
+      });
     } catch (err) {
       const msg = err.message.includes("expired")
         ? "OTP has expired. Close this modal and request a new one."
@@ -3026,7 +3056,10 @@ async function handleOtpVerifySubmit({ ack, body, view, client }) {
   }
 
   try {
-    await verifyOverrideOtp(order.clientReference, otp);
+    await verifyOverrideOtp(order.clientReference, otp, {
+      branch: order.fulfillment?.branch,
+      slackUserId: confirmedBy,
+    });
   } catch (err) {
     const msg = err.message.includes("expired")
       ? "OTP has expired. Close this modal and request a new one."
@@ -3083,7 +3116,7 @@ async function handleOtpAuthorize({ ack, body, client }) {
 
   // Validate with Zupa that an OTP was issued for this reference and hasn't expired.
   try {
-    await authorizeOtpOverride(clientReference);
+    await authorizeOtpOverride(clientReference, { slackUserId: authorizerId });
   } catch (err) {
     if (otpChannelId) {
       await client.chat.postEphemeral({
@@ -3246,7 +3279,7 @@ async function handleReceiptLookupSubmit({ ack, body, view }) {
 
   let receipt;
   try {
-    receipt = await lookupReceipt(query);
+    receipt = await lookupReceipt(query, { slackUserId: body.user.id });
   } catch (err) {
     console.error("[handleReceiptLookupSubmit]", err);
     await ack({
@@ -3305,7 +3338,10 @@ async function handleConfirmReceiptLink({ ack, body, client }) {
   const order = row.order;
 
   try {
-    await confirmReceiptMatch(foundReceipt.transactionRef, order.orderNumber || null);
+    await confirmReceiptMatch(foundReceipt.transactionRef, order.orderNumber || null, {
+      branch: order.fulfillment?.branch,
+      slackUserId: confirmedBy,
+    });
   } catch (err) {
     const msg =
       err.code === "ALREADY_MATCHED"

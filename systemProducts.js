@@ -1,12 +1,14 @@
 class SystemProducts {
   static apiUrl = process.env.ZUPA_API;
   static token = process.env.ZUPA_API_TOKEN;
+  static storeId = "8a7a28dc-b54d-4841-b949-efe60dbae709";
 
   static async makeRequest({
     endpoint,
     method = "GET",
     body = "",
     query = {},
+    branchId = null,
   }) {
     try {
       const urlQuery = new URLSearchParams(query);
@@ -17,6 +19,7 @@ class SystemProducts {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${this.token}`,
+          ...(branchId && { "X-Branch-Id": branchId }),
         },
         body: body || null,
       });
@@ -42,8 +45,7 @@ class SystemProducts {
 
   static async fetchProducts() {
     try {
-      const endpoint =
-        "customer-requests/stores/8a7a28dc-b54d-4841-b949-efe60dbae709/products";
+      const endpoint = `customer-requests/stores/${this.storeId}/products`;
       const res = await this.makeRequest({
         endpoint,
         query: { includeSpecial: true },
@@ -77,8 +79,7 @@ class SystemProducts {
   }
 
   static async fetchProductsWithAvailability() {
-    const endpoint =
-      "customer-requests/stores/8a7a28dc-b54d-4841-b949-efe60dbae709/products";
+    const endpoint = `customer-requests/stores/${this.storeId}/products`;
     const res = await this.makeRequest({
       endpoint,
       query: { includeSpecial: true },
@@ -103,13 +104,14 @@ class SystemProducts {
     });
   }
 
-  static async createOrder(payload) {
+  static async createOrder(payload, branchId = null) {
     try {
       const endpoint = "customer-requests/stores/slack-bot/order/new";
       const res = await this.makeRequest({
         endpoint,
         method: "POST",
         body: JSON.stringify(payload),
+        branchId,
       });
       return res;
     } catch (error) {
@@ -118,13 +120,14 @@ class SystemProducts {
     }
   }
 
-  static async modifyOrder(payload) {
+  static async modifyOrder(payload, branchId = null) {
     try {
       const endpoint = "customer-requests/stores/slack-bot/order/modify";
       const res = await this.makeRequest({
         endpoint,
         method: "PATCH",
         body: JSON.stringify(payload),
+        branchId,
       });
       return res;
     } catch (error) {
@@ -135,7 +138,7 @@ class SystemProducts {
 
   static async getDeliveryCities() {
     try {
-      const endpoint = "auth/stores/8a7a28dc-b54d-4841-b949-efe60dbae709";
+      const endpoint = `auth/stores/${this.storeId}`;
       const res = await this.makeRequest({ endpoint });
       if (!res) throw new Error("No response from makeRequest");
       return res?.delivery_types?.map((city) => {
@@ -148,6 +151,23 @@ class SystemProducts {
       });
     } catch (error) {
       console.log("Error fetching delivery cities:", error.message);
+      return [];
+    }
+  }
+
+  static async getBranches() {
+    try {
+      const endpoint = `customer-requests/stores/${this.storeId}/branches`;
+      const res = await this.makeRequest({ endpoint });
+      if (!Array.isArray(res)) throw new Error("No response from makeRequest");
+      return res.map((b) => ({
+        id: b.id,
+        name: b.name,
+        slug: b.slug,
+        isActive: b.isActive,
+      }));
+    } catch (error) {
+      console.log("Error fetching branches:", error.message);
       return [];
     }
   }
