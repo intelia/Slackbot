@@ -19,7 +19,7 @@ Extraction rules:
 - Prices: "3000", "₦3,000", "3k", "3,500" → extract as a plain number (e.g. 3000, 3500). "3k" → 3000.
 - statedTotal: the customer's stated grand total line (e.g. "Total....12,300(Name)", "Total: ₦55,500", "55500 total"). Extract as plain number or null.
 - For fulfillment: set type to "pickup" if the customer says pickup / self-collect / will pick up; "delivery" if delivery / address given; "unknown" if unclear.
-- For pickup: extract branch name (Lekki, Opebi, or Mainland) if mentioned, else null.
+- For pickup: extract branch name (Lekki, Opebi, Mainland, or Abuja) if mentioned, else null.
 - For delivery: extract the address/area text verbatim into address field (do NOT resolve to zone names).
 - statedFee: if customer writes "Delivery 4000" or "delivery fee: ₦3,500", extract as plain number; else null.
 - If a name appears in parentheses after the total (e.g. "Total....12,300(Oluseye)"), treat it as the customer name.

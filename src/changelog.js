@@ -4,6 +4,12 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: "1.22.1",
+    notes: [
+      "Fixed: selecting Pickup Abuja now shows and sends Abuja as the pickup branch instead of Lekki",
+    ],
+  },
+  {
     version: "1.22.0",
     notes: [
       "Requests to Zupa now identify which branch they're coming from — resolved from the order's own branch, or the acting CSR's assigned branch (/set-branch) when there's no order in scope",

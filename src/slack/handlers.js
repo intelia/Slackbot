@@ -6,6 +6,7 @@ const {
   getZoneById,
   getProductIndex,
   normalize,
+  pickupBranch,
 } = require("../parser/matcher");
 const store = require("../data/store");
 const { reconcile } = require("../parser/reconciler");
@@ -701,10 +702,7 @@ async function handleZonePickerSubmit({ ack, body, view, client }) {
       order.fulfillment.type = "pickup";
       order.fulfillment.zoneId = row.id;
       order.fulfillment.zoneName = row.name;
-      // Derive branch from the row name directly — API may not set closestStore on pickup rows
-      order.fulfillment.branch = /opebi/i.test(row.name) ? "Opebi"
-        : /mainland/i.test(row.name) ? "Mainland"
-        : "Lekki";
+      order.fulfillment.branch = pickupBranch(row);
       order.fulfillment.fee = 0;
       order.fulfillment.resolved = true;
     }
@@ -1636,7 +1634,7 @@ async function handleModCityPickerSubmit({ ack, body, view, client }) {
     if (row) {
       modState.mod.newZoneId   = row.id;
       modState.mod.newZoneName = row.name;
-      modState.mod.newBranch   = /opebi/i.test(row.name) ? "Opebi" : /mainland/i.test(row.name) ? "Mainland" : "Lekki";
+      modState.mod.newBranch   = pickupBranch(row);
       modState.mod.newFee      = 0;
       modState.mod.newAddress  = addressText || row.name;
     }

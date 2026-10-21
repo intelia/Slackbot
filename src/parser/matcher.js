@@ -194,6 +194,17 @@ function filterByBranch(rows, restrictBranches) {
   return rows.filter(r => allowed.has((r.branch || '').toLowerCase()));
 }
 
+// Branch a pickup row collects from. Derived from the row name first — the API
+// may not set closestStore on pickup rows — then the loader's branch, then Lekki.
+function pickupBranch(row) {
+  const name = (row && row.name) || '';
+  if (/opebi/i.test(name))    return 'Opebi';
+  if (/mainland/i.test(name)) return 'Mainland';
+  if (/abuja/i.test(name))    return 'Abuja';
+  if (/lekki/i.test(name))    return 'Lekki';
+  return (row && row.branch) || 'Lekki';
+}
+
 function matchPickup(address, branch, restrictBranches) {
   const pickupRows  = filterByBranch(store.getCities().pickupRows, restrictBranches);
   const upper       = (address || '').toUpperCase();
@@ -201,6 +212,7 @@ function matchPickup(address, branch, restrictBranches) {
 
   if (pickupRows.length === 0) return null;
   if (branchUpper === 'OPEBI' || upper.includes('OPEBI')) return pickupRows.find(r => /opebi/i.test(r.name)) || pickupRows[0];
+  if (branchUpper === 'ABUJA' || upper.includes('ABUJA')) return pickupRows.find(r => /abuja/i.test(r.name)) || pickupRows[0];
   if (branchUpper === 'LEKKI' || upper.includes('LEKKI')) return pickupRows.find(r => /lekki/i.test(r.name)) || pickupRows[0];
   return pickupRows.find(r => /^pickup$/i.test(r.name)) || pickupRows[0];
 }
@@ -267,6 +279,7 @@ function getZoneById(id) {
 module.exports = {
   matchProduct,
   matchPickup,
+  pickupBranch,
   matchZone,
   getSurgeTwins,
   getZoneById,

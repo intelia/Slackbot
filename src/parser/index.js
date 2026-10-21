@@ -2,7 +2,7 @@
 
 const crypto = require('crypto');
 const { segment } = require('./ai-segmenter');
-const { matchProduct, matchPickup, matchZone, getSurgeTwins, canonicalSize } = require('./matcher');
+const { matchProduct, matchPickup, pickupBranch, matchZone, getSurgeTwins, canonicalSize } = require('./matcher');
 const { reconcile } = require('./reconciler');
 
 // Confidence thresholds
@@ -114,7 +114,7 @@ async function parse(rawMessage, restrictBranches) {
       fulfillment.zoneId = pickupRow.id;
       fulfillment.zoneName = pickupRow.name;
       fulfillment.fee = 0;
-      fulfillment.branch = fulfillment.branch || 'Lekki';
+      fulfillment.branch = pickupBranch(pickupRow);
       fulfillment.resolved = true;
     }
   } else if (fulfillment.type === 'delivery' || fulfillment.address) {
