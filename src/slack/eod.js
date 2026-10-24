@@ -224,9 +224,10 @@ async function postEodSummaries(client) {
 
 // ── Restaurant (Terminal/POS) Order Daily Summary ─────────────────────────────
 // Separate data source from the Daily Operations Report above (terminal orders
-// never pass through this bot, so there's no per-channel targeting to derive —
-// posts to NOTIFY_CHANNELS directly, the same destination the report above
-// falls back to).
+// never pass through this bot, so there's no per-channel targeting to derive
+// from terminal data itself) — posts to the same channels as that report,
+// via the shared _resolveTargets helper, so it isn't silently skipped
+// whenever NOTIFY_CHANNELS happens to be unset.
 async function postTerminalDailySummary(client) {
   const dateLabel = new Date().toLocaleDateString('en-NG', {
     timeZone: 'Africa/Lagos', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
@@ -251,9 +252,9 @@ async function postTerminalDailySummary(client) {
     return;
   }
 
-  const targets = (process.env.NOTIFY_CHANNELS || '').split(',').map(s => s.trim()).filter(Boolean);
+  const { targets } = _resolveTargets(getAllOrdersToday());
   if (targets.length === 0) {
-    console.log('[eod] No channels for restaurant summary — NOTIFY_CHANNELS is unset.');
+    console.log('[eod] No channels for restaurant summary — no confirmed-order channels today and NOTIFY_CHANNELS is unset.');
     return;
   }
 

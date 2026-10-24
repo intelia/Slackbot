@@ -4,6 +4,12 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: "1.22.2",
+    notes: [
+      "Fixed: the automatic 9pm Restaurant Order Daily Summary now posts to the same channel(s) as the Daily Operations Report instead of silently skipping when no notify channel was configured",
+    ],
+  },
+  {
     version: "1.22.1",
     notes: [
       "Fixed: selecting Pickup Abuja now shows and sends Abuja as the pickup branch instead of Lekki",
