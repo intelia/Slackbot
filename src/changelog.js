@@ -4,6 +4,18 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: "1.22.4",
+    notes: [
+      "Fixed order parsing when the AI provider wraps extracted details inside an order field",
+    ],
+  },
+  {
+    version: "1.22.3",
+    notes: [
+      "Claude order parsing can now use an OpenRouter API key, while direct Anthropic API access remains available",
+    ],
+  },
+  {
     version: "1.22.2",
     notes: [
       "Fixed: the automatic 9pm Restaurant Order Daily Summary now posts to the same channel(s) as the Daily Operations Report instead of silently skipping when no notify channel was configured",

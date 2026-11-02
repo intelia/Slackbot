@@ -7,6 +7,11 @@ const PROVIDER = (process.env.AI_PROVIDER || "openai").toLowerCase();
 
 const OPENAI_MODEL = process.env.OPENAI_MODEL || "gpt-4o-mini";
 const CLAUDE_MODEL = process.env.CLAUDE_MODEL || "claude-sonnet-5";
+const USE_OPENROUTER = Boolean(process.env.OPENROUTER_API_KEY);
+const CLAUDE_API_MODEL =
+  USE_OPENROUTER && !CLAUDE_MODEL.includes("/")
+    ? `anthropic/${CLAUDE_MODEL}`
+    : CLAUDE_MODEL;
 
 let _openaiClient = null;
 let _anthropicClient = null;
@@ -22,18 +27,24 @@ function getOpenAIClient() {
 
 function getAnthropicClient() {
   if (!_anthropicClient) {
-    if (!process.env.ANTHROPIC_API_KEY)
-      throw new Error("ANTHROPIC_API_KEY not set");
+    const openRouterApiKey = process.env.OPENROUTER_API_KEY;
+    const anthropicApiKey = process.env.ANTHROPIC_API_KEY;
+    if (!openRouterApiKey && !anthropicApiKey)
+      throw new Error("OPENROUTER_API_KEY or ANTHROPIC_API_KEY not set");
+
     const Anthropic = require("@anthropic-ai/sdk");
-    // Identity-linked Console API keys (as opposed to workspace-scoped keys)
-    // require the target workspace id on every request.
-    const defaultHeaders = process.env.ANTHROPIC_WORKSPACE_ID
-      ? { "anthropic-workspace-id": process.env.ANTHROPIC_WORKSPACE_ID }
-      : undefined;
-    _anthropicClient = new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY,
-      defaultHeaders,
-    });
+    const options = openRouterApiKey
+      ? {
+          apiKey: openRouterApiKey,
+          baseURL: "https://openrouter.ai/api",
+        }
+      : {
+          apiKey: anthropicApiKey,
+          defaultHeaders: process.env.ANTHROPIC_WORKSPACE_ID
+            ? { "anthropic-workspace-id": process.env.ANTHROPIC_WORKSPACE_ID }
+            : undefined,
+        };
+    _anthropicClient = new Anthropic(options);
   }
   return _anthropicClient;
 }
@@ -68,7 +79,7 @@ async function claudeStructuredCompletion({
 }) {
   const client = getAnthropicClient();
   const message = await client.messages.create({
-    model: CLAUDE_MODEL,
+    model: CLAUDE_API_MODEL,
     max_tokens: 4096,
     system: systemPrompt,
     messages: [{ role: "user", content: userMessage }],

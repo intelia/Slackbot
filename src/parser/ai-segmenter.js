@@ -125,25 +125,34 @@ const ORDER_SCHEMA = {
 };
 
 async function aiSegment(rawMessage) {
-  const parsed = await createStructuredCompletion({
+  const response = await createStructuredCompletion({
     schemaName: "order_extraction",
     schema: ORDER_SCHEMA,
     systemPrompt: buildSystemPrompt(),
     userMessage: rawMessage,
   });
+  const parsed = response?.order || response;
 
-  // Ensure required array fields are present (defensive)
-  parsed.itemLines = parsed.itemLines || [];
-  parsed.notes = parsed.notes || [];
+  if (
+    !parsed ||
+    typeof parsed !== "object" ||
+    !parsed.customer ||
+    typeof parsed.customer !== "object" ||
+    !parsed.fulfillment ||
+    typeof parsed.fulfillment !== "object" ||
+    !Array.isArray(parsed.itemLines)
+  ) {
+    throw new Error("AI response did not contain a valid order");
+  }
+
+  if (!Array.isArray(parsed.notes)) parsed.notes = [];
 
   return parsed;
 }
 
 async function segment(rawMessage) {
   try {
-    const response = await aiSegment(rawMessage);
-    console.log("response: ", response);
-    return response;
+    return await aiSegment(rawMessage);
   } catch (err) {
     console.warn(
       "[ai-segmenter] AI call failed, falling back to rule-based parser:",
