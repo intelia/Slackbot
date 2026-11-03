@@ -11,6 +11,7 @@ const MANAGER_USER_IDS =
         "U08UX5S1Z63", // Uche Uzoka
         "U08V531QSS2", // Udoka Uzoka
         "U091TRTU3U4", // Muhammed
+        "U0BA1L1SFEZ", // Adebayo Azeez
       ]);
 
 const APP_MANAGER_USER_IDS = new Set([
