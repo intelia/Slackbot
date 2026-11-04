@@ -33,6 +33,7 @@ function createApp() {
   app.event("app_mention", handlers.handleMentionOrder);
   app.message("--version", handlers.handleVersionCommand);
   app.event("message", handlers.handleThreadMessage);
+  app.event("message", handlers.handleMessageChanged);
 
   // ── Modal submissions ───────────────────────────────────────────────────────
   app.view("parse_order_submit", handlers.handleParseOrderSubmit);
@@ -122,6 +123,7 @@ function createApp() {
   // OTP receipt linking
   app.action("link_receipt_btn", handlers.handleLinkReceiptBtn);
   app.action("confirm_receipt_link", handlers.handleConfirmReceiptLink);
+  app.action("confirm_manual_match", handlers.handleConfirmManualMatch);
   app.action("mark_payment_complete", handlers.handleMarkPaymentComplete);
 
   // Availability live filter + copy

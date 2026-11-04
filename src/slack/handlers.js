@@ -20,6 +20,7 @@ const {
   verifyOverrideOtp,
   lookupReceipt,
   confirmReceiptMatch,
+  confirmManualMatch,
   authorizeOtpOverride,
 } = require("../zupa");
 const {
@@ -87,6 +88,7 @@ const {
   applyAvailabilityFilter,
   buildAmountAdjustModal,
   buildReceiptLookupModal,
+  buildManualMatchConfirmModal,
   buildReceiptFoundModal,
 } = require("./blocks");
 
@@ -313,18 +315,17 @@ async function handleParseOrderSubmit({ ack, body, view, client }) {
 }
 
 // ── App mention: @bot <order text> → parse + post review ─────────────────────
+// Shared by both the initial @mention and a later edit of that same message
+// (handleMessageChanged below) — editing should re-trigger the same flow.
 
-async function handleMentionOrder({ event, client }) {
-  const channelId = event.channel;
-  const rawText = (event.text || "").replace(/<@[A-Z0-9]+>/g, "").trim();
-
+async function parseAndPostOrderReply(client, channelId, rawText, threadTs, userId) {
   if (!rawText) return;
 
   const existing = findDuplicate(rawText);
   if (existing) {
     const warning = await client.chat.postMessage({
       channel: channelId,
-      thread_ts: event.ts,
+      thread_ts: threadTs,
       text: "Duplicate order detected",
       blocks: buildDuplicateWarningBlocks(existing),
     });
@@ -332,8 +333,8 @@ async function handleMentionOrder({ event, client }) {
       pendingParseMap.set(stateKey(channelId, warning.ts), {
         channelId,
         rawText,
-        threadTs: event.ts,
-        userId: event.user,
+        threadTs,
+        userId,
       });
     }
     return;
@@ -341,7 +342,7 @@ async function handleMentionOrder({ event, client }) {
 
   const loading = await client.chat.postMessage({
     channel: channelId,
-    thread_ts: event.ts,
+    thread_ts: threadTs,
     text: "Parsing order…",
     blocks: [
       {
@@ -354,11 +355,11 @@ async function handleMentionOrder({ event, client }) {
     ],
   });
 
-  const order = await parse(rawText, getUserBranches(event.user));
-  order.slackRootTs = event.ts; // thread root = the mention ts, not the bot's reply ts
+  const order = await parse(rawText, getUserBranches(userId));
+  order.slackRootTs = threadTs; // thread root = the mentioning message, not the bot's reply ts
   order.paymentStatus = "verifying";
   order.parsedByInitial = extractInitial(rawText);
-  order.parsedBy = resolveParsedBy(order.parsedByInitial, event.user);
+  order.parsedBy = resolveParsedBy(order.parsedByInitial, userId);
   const blocks = buildReviewOrderBlocks(order);
 
   if (loading.ts) {
@@ -371,6 +372,38 @@ async function handleMentionOrder({ event, client }) {
     saveOrder(channelId, loading.ts, order);
     verifyPaymentBackground(client, order, channelId, loading.ts);
   }
+}
+
+async function handleMentionOrder({ event, client }) {
+  const channelId = event.channel;
+  const rawText = (event.text || "").replace(/<@[A-Z0-9]+>/g, "").trim();
+  await parseAndPostOrderReply(client, channelId, rawText, event.ts, event.user);
+}
+
+// ── Message edited: if the edited text still mentions the bot, reparse ───────
+// CSRs often paste the order, tag the bot, then fix a typo in that same
+// message rather than resend it. Slack delivers edits as a `message` event
+// with subtype `message_changed`; the updated text lives at event.message.text
+// (not event.text), and the edited message's own ts is event.message.ts.
+
+async function handleMessageChanged({ event, client, context }) {
+  const edited = event.message;
+  if (!edited || edited.bot_id || edited.subtype) return;
+
+  // Skip no-op "edits" Slack fires for things like link-unfurl attachments,
+  // where the visible text didn't actually change.
+  if (event.previous_message && event.previous_message.text === edited.text) return;
+
+  const botUserId = context && context.botUserId;
+  if (!botUserId || !(edited.text || "").includes(`<@${botUserId}>`)) return;
+
+  // Once an order's been confirmed/pushed, further edits should go through
+  // the thread-reply modification flow (handleThreadMessage), not spawn a
+  // brand-new order from an old message.
+  if (getConfirmedOrder(event.channel, edited.ts)) return;
+
+  const rawText = edited.text.replace(/<@[A-Z0-9]+>/g, "").trim();
+  await parseAndPostOrderReply(client, event.channel, rawText, edited.ts, edited.user);
 }
 
 // ── Product picker: dropdown selection ───────────────────────────────────────
@@ -3262,6 +3295,26 @@ async function handleReceiptLookupSubmit({ ack, body, view }) {
   const payerName = vals.name_block?.name_input?.value?.trim() || null;
   const amountRaw = vals.amount_block?.amount_input?.value?.trim() || null;
   const amount = amountRaw && !Number.isNaN(Number(amountRaw)) ? Number(amountRaw) : null;
+  const isManualMatch = (vals.manual_block?.manual_input?.selected_options || []).some(
+    (o) => o.value === "manual",
+  );
+
+  if (isManualMatch) {
+    if (!payerName || amount === null) {
+      await ack({
+        response_action: "errors",
+        errors: { name_block: "Payer Name and Amount are both required for a manual match." },
+      });
+      return;
+    }
+    const meta = JSON.parse(view.private_metadata || "{}");
+    const updatedMeta = JSON.stringify({ ...meta, manualMatch: { payerName, amount } });
+    await ack({
+      response_action: "update",
+      view: buildManualMatchConfirmModal(updatedMeta, { payerName, amount }),
+    });
+    return;
+  }
 
   if (!transactionRef && !payerName && amount === null) {
     await ack({
@@ -3341,17 +3394,17 @@ async function handleConfirmReceiptLink({ ack, body, client }) {
       slackUserId: confirmedBy,
     });
   } catch (err) {
-    const msg =
-      err.code === "ALREADY_MATCHED"
-        ? "⚠️ This receipt has already been linked to another order."
-        : `⚠️ Could not link receipt: ${err.message}`;
+    // err.message already carries the backend's actual reason for a 409 —
+    // "already matched" and "would exceed this payment's amount" (a split
+    // match over budget) are both real, distinct cases now, so show it as-is
+    // rather than collapsing both under one generic "already linked" text.
     await client.views.update({
       view_id: viewId,
       view: {
         type: "modal",
         title: { type: "plain_text", text: "Link Receipt" },
         close: { type: "plain_text", text: "Close" },
-        blocks: [{ type: "section", text: { type: "mrkdwn", text: msg } }],
+        blocks: [{ type: "section", text: { type: "mrkdwn", text: `⚠️ Could not link receipt: ${err.message}` } }],
       },
     });
     return;
@@ -3404,6 +3457,116 @@ async function handleConfirmReceiptLink({ ack, body, client }) {
           text: {
             type: "mrkdwn",
             text: `✅ Receipt \`${foundReceipt.transactionRef}\` linked successfully to order *${order.orderNumber || order.clientReference}*.`,
+          },
+        },
+      ],
+    },
+  });
+}
+
+// ── Manual match (no receipt — half/partial payment) ──────────────────────────
+
+async function handleConfirmManualMatch({ ack, body, client }) {
+  await ack();
+  const viewId = body.view?.id;
+  const meta = JSON.parse(body.view?.private_metadata || "{}");
+  const { channelId, messageTs, lookupTs, confirmedBy, manualMatch } = meta;
+
+  if (!manualMatch || !channelId) {
+    await client.views.update({
+      view_id: viewId,
+      view: {
+        type: "modal",
+        title: { type: "plain_text", text: "Error" },
+        close: { type: "plain_text", text: "Close" },
+        blocks: [{ type: "section", text: { type: "mrkdwn", text: "⚠️ Session data missing — please try again from the confirmation card." } }],
+      },
+    });
+    return;
+  }
+
+  const row = getConfirmedOrderRow(channelId, lookupTs);
+  if (!row) {
+    await client.views.update({
+      view_id: viewId,
+      view: {
+        type: "modal",
+        title: { type: "plain_text", text: "Error" },
+        close: { type: "plain_text", text: "Close" },
+        blocks: [{ type: "section", text: { type: "mrkdwn", text: "⚠️ Order not found in database — please try again." } }],
+      },
+    });
+    return;
+  }
+
+  const order = row.order;
+
+  try {
+    await confirmManualMatch(
+      order.orderNumber || null,
+      { ...manualMatch, isHalfPayment: true, confirmedBy: body.user.id },
+      { branch: order.fulfillment?.branch, slackUserId: confirmedBy },
+    );
+  } catch (err) {
+    await client.views.update({
+      view_id: viewId,
+      view: {
+        type: "modal",
+        title: { type: "plain_text", text: "Link Receipt" },
+        close: { type: "plain_text", text: "Close" },
+        blocks: [{ type: "section", text: { type: "mrkdwn", text: `⚠️ Could not record manual match: ${err.message}` } }],
+      },
+    });
+    return;
+  }
+
+  // Append to linked receipts on the order and persist — flagged so the
+  // confirmation card can show it was a manual/half-payment entry, not a
+  // real receipt lookup.
+  order.linkedReceipts = [
+    ...(order.linkedReceipts || []),
+    {
+      transactionRef: null,
+      amount: manualMatch.amount,
+      payerName: manualMatch.payerName,
+      isHalfPayment: true,
+      manual: true,
+      linkedBy: body.user.id,
+    },
+  ];
+  updateConfirmedOrder(channelId, lookupTs, order);
+
+  const resolvedBy = confirmedBy || row.confirmedBy;
+  await client.chat.update({
+    channel: channelId,
+    ts: messageTs,
+    text: `✅ Order confirmed${order.orderNumber ? " · Zupa: " + order.orderNumber : ""}${order.clientReference ? " · Ref: " + order.clientReference : ""}`,
+    blocks: buildConfirmationBlocks(order, order.orderNumber, resolvedBy),
+  });
+
+  if (order.otpSlackMessages?.length > 0) {
+    const count = order.linkedReceipts.length;
+    const linker = `<@${body.user.id}>`;
+    const statusText =
+      count === 1
+        ? `🧾  *Manual payment match recorded by ${linker}*`
+        : `🧾  *${count} receipts linked — last by ${linker} (manual)*`;
+    const newBlocks = await _updateOtpMessageStatus(client, order, statusText);
+    if (newBlocks) order.otpSlackBlocks = newBlocks;
+  }
+
+  await client.views.update({
+    view_id: viewId,
+    view: {
+      type: "modal",
+      title: { type: "plain_text", text: "Manual Match Recorded" },
+      close: { type: "plain_text", text: "Close" },
+      blocks: [
+        {
+          type: "section",
+          text: {
+            type: "mrkdwn",
+            text: `✅ Manual payment match recorded for order *${order.orderNumber || order.clientReference}* — payer "${manualMatch.payerName}", ₦${manualMatch.amount}.`,
           },
         },
       ],
@@ -3533,6 +3696,7 @@ module.exports = {
   handleParseOrderCommand,
   handleParseOrderSubmit,
   handleMentionOrder,
+  handleMessageChanged,
   handleProductPick,
   handleEditItem,
   handleDoneEditItem,
@@ -3601,6 +3765,7 @@ module.exports = {
   handleLinkReceiptBtn,
   handleReceiptLookupSubmit,
   handleConfirmReceiptLink,
+  handleConfirmManualMatch,
   handleMarkPaymentComplete,
   clearExpiredPendingOrders,
 };

@@ -4,6 +4,12 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: "1.22.5",
+    notes: [
+      "Editing a message that tags the bot now reparses the corrected order and replies again, instead of being silently ignored",
+    ],
+  },
+  {
     version: "1.22.4",
     notes: [
       "Fixed order parsing when the AI provider wraps extracted details inside an order field",
