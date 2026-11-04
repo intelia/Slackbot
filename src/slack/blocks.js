@@ -2688,6 +2688,69 @@ function buildReceiptLookupModal(privateMetadata, order) {
           initial_value: order?.orderTotal != null ? String(order.orderTotal) : "",
         },
       },
+      {
+        type: "input",
+        block_id: "manual_block",
+        optional: true,
+        label: { type: "plain_text", text: "No matching receipt?" },
+        element: {
+          type: "checkboxes",
+          action_id: "manual_input",
+          options: [
+            {
+              text: {
+                type: "mrkdwn",
+                text: "*Match manually* — half/partial payment, or paid through a channel we don't auto-track. Uses Payer Name + Amount above; no receipt is looked up.",
+              },
+              value: "manual",
+            },
+          ],
+        },
+      },
+    ],
+  };
+}
+
+// ── Manual match confirm modal (no receipt, name/amount only) ────────────────
+
+function buildManualMatchConfirmModal(privateMetadata, { payerName, amount }) {
+  return {
+    type: "modal",
+    callback_id: "manual_match_confirm_modal",
+    private_metadata:
+      typeof privateMetadata === "string"
+        ? privateMetadata
+        : JSON.stringify(privateMetadata),
+    title: { type: "plain_text", text: "Link Payment Receipt" },
+    close: { type: "plain_text", text: "Cancel" },
+    blocks: [
+      {
+        type: "section",
+        text: {
+          type: "mrkdwn",
+          text:
+            "⚠️ No receipt will be looked up — this records a *manual, half/partial* match straight " +
+            "from the payer name and amount below. Only do this when you're looking at proof of payment yourself.",
+        },
+      },
+      {
+        type: "section",
+        fields: [
+          { type: "mrkdwn", text: `*Payer*\n${payerName || "—"}` },
+          { type: "mrkdwn", text: `*Amount*\n${fmt(amount)}` },
+        ],
+      },
+      {
+        type: "actions",
+        elements: [
+          {
+            type: "button",
+            text: { type: "plain_text", text: "✅ Confirm Manual Match" },
+            style: "primary",
+            action_id: "confirm_manual_match",
+          },
+        ],
+      },
     ],
   };
 }
@@ -2775,5 +2838,6 @@ module.exports = {
   applyAvailabilityFilter,
   buildAmountAdjustModal,
   buildReceiptLookupModal,
+  buildManualMatchConfirmModal,
   buildReceiptFoundModal,
 };

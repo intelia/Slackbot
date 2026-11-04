@@ -306,6 +306,17 @@ async function confirmReceiptMatch(transactionRef, orderNumber, ctx = {}) {
   throw new Error(data?.message || `Receipt confirm failed (HTTP ${status})`);
 }
 
+// Records a manual, no-receipt match (half/partial payment, or a payment
+// channel we don't auto-track) straight from payer name + amount — no
+// order_payment_receipt lookup involved. ctx: { branch, slackUserId }.
+async function confirmManualMatch(orderNumber, { payerName, amount, isHalfPayment, confirmedBy } = {}, ctx = {}) {
+  const body = { orderNumber, payerName, amount, isHalfPayment, confirmedBy };
+  const branchId = resolveBranchId({ branch: ctx.branch, slackUserId: ctx.slackUserId });
+  const { status, data } = await paymentFetch("payment/order/receipt/manual-match", body, branchId);
+  if (status === 200) return data;
+  throw new Error(data?.message || `Manual match failed (HTTP ${status})`);
+}
+
 // ctx: { slackUserId } — these aggregate across all branches, so branch (when sent)
 // can only come from the requesting CSR's own single assigned branch.
 async function fetchKitchenSummary(startDate, endDate, ctx = {}) {
@@ -366,6 +377,7 @@ module.exports = {
   verifyOverrideOtp,
   lookupReceipt,
   confirmReceiptMatch,
+  confirmManualMatch,
   authorizeOtpOverride,
   fetchKitchenSummary,
   fetchTerminalDailySummary,
