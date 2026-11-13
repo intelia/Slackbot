@@ -4,6 +4,12 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: "1.22.6",
+    notes: [
+      "Adjust Amount and Try Different Name (on both the main order and order-modification payment screens) now have a Save option — tick it to stage that correction without searching yet, so a wrong name and a wrong amount can be fixed together on the next search",
+    ],
+  },
+  {
     version: "1.22.5",
     notes: [
       "Editing a message that tags the bot now reparses the corrected order and replies again, instead of being silently ignored",

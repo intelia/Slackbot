@@ -12,6 +12,19 @@ function trunc(s, max) {
   return s.length > max ? s.slice(0, max - 1) + "…" : s;
 }
 
+// Shown on the review/mod card when a payer name and/or amount diff has been
+// "Saved" from one of the two payment-matching modals, awaiting the other
+// correction before the combined search is run.
+function stagedPaymentNote(staged) {
+  if (!staged || (!staged.payerName && staged.amountDiff == null)) return null;
+  const parts = [];
+  if (staged.payerName) parts.push(`name: *${staged.payerName}*`);
+  if (staged.amountDiff != null) {
+    parts.push(`amount diff: *${staged.amountDiff > 0 ? "+" : ""}${staged.amountDiff}*`);
+  }
+  return `📌 *Staged for next search —* ${parts.join("  ·  ")}`;
+}
+
 // ── Line item blocks ──────────────────────────────────────────────────────────
 
 function matchedItemBlock(item) {
@@ -377,6 +390,10 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
         type: "context",
         elements: [{ type: "mrkdwn", text: paymentText }],
       });
+    }
+    const stagedNote = stagedPaymentNote(order.stagedPayment);
+    if (stagedNote) {
+      blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: stagedNote }] });
     }
   }
 
@@ -1248,10 +1265,15 @@ function buildModReviewBlocks(mod, confirmedOrder) {
         text: `💳  *Additional payment required: ${fmt(mod.modIncrease)}*\nNo matching payment found for this top-up amount. Verify the transfer or request an override.`,
       },
     });
+    const stagedNote = stagedPaymentNote(mod.stagedPayment);
+    if (stagedNote) {
+      blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: stagedNote }] });
+    }
     blocks.push({
       type: "actions",
       block_id: "mod_actions",
       elements: [
+        { type: "button", text: { type: "plain_text", text: "💱  Adjust Amount" }, action_id: "mod_amount_adjust" },
         { type: "button", text: { type: "plain_text", text: "🔁  Try Different Name" }, action_id: "mod_try_payment_name" },
         { type: "button", text: { type: "plain_text", text: "🔐  Request Override OTP" }, action_id: "mod_request_otp", style: "primary" },
         { type: "button", text: { type: "plain_text", text: "Cancel" }, action_id: "mod_reject" },
@@ -2344,30 +2366,34 @@ function buildPaymentNotFoundBlocks(order) {
   ];
 }
 
-function buildAmountAdjustModal(privateMetadata, orderTotal, limit) {
+// opts: { baseLabel, stagedPayerName, initialAmountDiff } — baseLabel describes
+// what `baseAmount` represents ("Order total" for the main flow, "Additional
+// payment due" for the mod/top-up flow). stagedPayerName/initialAmountDiff
+// surface a name/amount already "Saved" from the other payment modal, so the
+// two corrections can be combined on one search.
+function buildAmountAdjustModal(privateMetadata, baseAmount, limit, opts = {}) {
+  const { baseLabel = "Order total", stagedPayerName = null, initialAmountDiff = null } = opts;
+  const descLines = [
+    `${baseLabel}: *${fmt(baseAmount)}*`,
+    ``,
+    `Enter the difference between the ${baseLabel.toLowerCase()} and the actual payment amount.`,
+    `Use a *negative* value if the customer paid *more* than this amount.`,
+    ``,
+    `_Example: ${baseLabel.toLowerCase()} ₦10,000, customer paid ₦10,500 → enter \`-500\`_`,
+    `_Maximum allowed: ±${fmt(limit)}_`,
+  ];
+  if (stagedPayerName) {
+    descLines.push(``, `📌 *Staged name:* ${stagedPayerName}  _(combined in automatically unless you tick Save below)_`);
+  }
   return {
     type: "modal",
     callback_id: "amount_adjust_submit",
     private_metadata: privateMetadata,
     title: { type: "plain_text", text: "Adjust Search Amount" },
-    submit: { type: "plain_text", text: "Search" },
+    submit: { type: "plain_text", text: "Continue" },
     close: { type: "plain_text", text: "Cancel" },
     blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: [
-            `Order total: *${fmt(orderTotal)}*`,
-            ``,
-            `Enter the difference between the order total and the actual payment amount.`,
-            `Use a *negative* value if the customer paid *more* than the order total.`,
-            ``,
-            `_Example: order ₦10,000, customer paid ₦10,500 → enter \`-500\`_`,
-            `_Maximum allowed: ±${fmt(limit)}_`,
-          ].join("\n"),
-        },
-      },
+      { type: "section", text: { type: "mrkdwn", text: descLines.join("\n") } },
       {
         type: "input",
         block_id: "adjust_amount_block",
@@ -2376,6 +2402,23 @@ function buildAmountAdjustModal(privateMetadata, orderTotal, limit) {
           type: "plain_text_input",
           action_id: "adjust_amount_input",
           placeholder: { type: "plain_text", text: "e.g.  -500  or  300" },
+          ...(initialAmountDiff != null ? { initial_value: String(initialAmountDiff) } : {}),
+        },
+      },
+      {
+        type: "input",
+        block_id: "adjust_amount_save_block",
+        optional: true,
+        label: { type: "plain_text", text: "Action" },
+        element: {
+          type: "checkboxes",
+          action_id: "adjust_amount_save_checkbox",
+          options: [
+            {
+              text: { type: "plain_text", text: "💾  Save only — don't search yet (also need to fix the name)" },
+              value: "save_only",
+            },
+          ],
         },
       },
     ],
@@ -2420,23 +2463,29 @@ function buildOtpPendingBlocks(order) {
   ];
 }
 
-function buildPaymentNameModal(privateMetadata) {
+// opts: { stagedAmountDiff, baseAmount, initialPayerName } — stagedAmountDiff
+// surfaces an amount diff already "Saved" from the Adjust Amount modal, so
+// the two corrections can be combined on one search.
+function buildPaymentNameModal(privateMetadata, opts = {}) {
+  const { stagedAmountDiff = null, baseAmount = null, initialPayerName = null } = opts;
+  const contextLines = ["Enter the name exactly as it appears on the payment transfer."];
+  if (stagedAmountDiff != null && baseAmount != null) {
+    const adjusted = baseAmount - stagedAmountDiff;
+    contextLines.push(
+      `📌 *Staged amount:* ${fmt(adjusted)}  (diff ${stagedAmountDiff > 0 ? "+" : ""}${stagedAmountDiff})  _(combined in automatically unless you tick Save below)_`,
+    );
+  }
   return {
     type: "modal",
     callback_id: "payment_name_submit",
     private_metadata: privateMetadata,
     title: { type: "plain_text", text: "Payment Name" },
-    submit: { type: "plain_text", text: "Search Payment" },
+    submit: { type: "plain_text", text: "Continue" },
     close: { type: "plain_text", text: "Cancel" },
     blocks: [
       {
         type: "context",
-        elements: [
-          {
-            type: "mrkdwn",
-            text: "Enter the name exactly as it appears on the payment transfer.",
-          },
-        ],
+        elements: [{ type: "mrkdwn", text: contextLines.join("\n") }],
       },
       {
         type: "input",
@@ -2446,6 +2495,23 @@ function buildPaymentNameModal(privateMetadata) {
           type: "plain_text_input",
           action_id: "payment_name_input",
           placeholder: { type: "plain_text", text: "e.g. Chukwuemeka Okafor" },
+          ...(initialPayerName ? { initial_value: initialPayerName } : {}),
+        },
+      },
+      {
+        type: "input",
+        block_id: "payment_name_save_block",
+        optional: true,
+        label: { type: "plain_text", text: "Action" },
+        element: {
+          type: "checkboxes",
+          action_id: "payment_name_save_checkbox",
+          options: [
+            {
+              text: { type: "plain_text", text: "💾  Save only — don't search yet (also need to fix the amount)" },
+              value: "save_only",
+            },
+          ],
         },
       },
     ],

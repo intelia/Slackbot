@@ -110,6 +110,7 @@ function createApp() {
   );
   app.action("mod_zone_select", handlers.handleModZoneSelect);
   app.action("mod_city_picker_btn", handlers.handleModCityPickerBtn);
+  app.action("mod_amount_adjust", handlers.handleModAmountAdjust);
   app.action("mod_try_payment_name", handlers.handleModTryPaymentName);
   app.action("mod_request_otp", handlers.handleModRequestOtp);
   app.action("mod_enter_otp", handlers.handleModEnterOtp);

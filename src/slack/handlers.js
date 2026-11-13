@@ -1678,6 +1678,7 @@ async function handleModCityPickerSubmit({ ack, body, view, client }) {
   // Reset payment gate if fee changed — user must re-confirm
   delete modState.mod.paymentStatus;
   delete modState.mod.modIncrease;
+  delete modState.mod.stagedPayment;
 
   await client.chat.update({
     channel: channelId,
@@ -1695,11 +1696,18 @@ async function handleModTryPaymentName({ ack, body, client }) {
   const channelId   = body.container.channel_id;
   const modMessageTs = body.container.message_ts;
   const threadTs     = body.container.thread_ts || null;
+  const modState     = modStateMap.get(stateKey(channelId, modMessageTs));
+  const mod          = modState?.mod;
 
   await client.views.open({
     trigger_id: body.trigger_id,
     view: buildPaymentNameModal(
       JSON.stringify({ context: "mod", channelId, modMessageTs, confirmedBy: body.user.id, threadTs }),
+      {
+        stagedAmountDiff: mod?.stagedPayment?.amountDiff ?? null,
+        baseAmount: mod?.modIncrease ?? null,
+        initialPayerName: mod?.stagedPayment?.payerName || null,
+      },
     ),
   });
 }
@@ -2523,7 +2531,32 @@ async function handleAmountAdjust({ ack, body, client }) {
   const meta = JSON.stringify({ channelId, ts, threadTs, confirmedBy: body.user.id });
   await client.views.open({
     trigger_id: body.trigger_id,
-    view: buildAmountAdjustModal(meta, order.orderTotal, PAYMENT_ADJUSTMENT_LIMIT),
+    view: buildAmountAdjustModal(meta, order.orderTotal, PAYMENT_ADJUSTMENT_LIMIT, {
+      stagedPayerName: order.stagedPayment?.payerName || null,
+      initialAmountDiff: order.stagedPayment?.amountDiff ?? null,
+    }),
+  });
+}
+
+// ── Mod: payment gate — Adjust Amount ─────────────────────────────────────────
+
+async function handleModAmountAdjust({ ack, body, client }) {
+  await ack();
+  const channelId    = body.container.channel_id;
+  const modMessageTs = body.container.message_ts;
+  const threadTs     = body.container.thread_ts || null;
+  const modState      = modStateMap.get(stateKey(channelId, modMessageTs));
+  if (!modState) return;
+  const { mod } = modState;
+
+  const meta = JSON.stringify({ context: "mod", channelId, modMessageTs, confirmedBy: body.user.id, threadTs });
+  await client.views.open({
+    trigger_id: body.trigger_id,
+    view: buildAmountAdjustModal(meta, mod.modIncrease, PAYMENT_ADJUSTMENT_LIMIT, {
+      baseLabel: "Additional payment due",
+      stagedPayerName: mod.stagedPayment?.payerName || null,
+      initialAmountDiff: mod.stagedPayment?.amountDiff ?? null,
+    }),
   });
 }
 
@@ -2532,6 +2565,9 @@ async function handleAmountAdjustSubmit({ ack, body, view, client }) {
     view.state.values?.adjust_amount_block?.adjust_amount_input?.value || ""
   ).trim();
   const diff = parseFloat(rawInput.replace(/,/g, ""));
+  const saveOnly = (
+    view.state.values?.adjust_amount_save_block?.adjust_amount_save_checkbox?.selected_options || []
+  ).length > 0;
 
   if (isNaN(diff)) {
     await ack({
@@ -2547,21 +2583,88 @@ async function handleAmountAdjustSubmit({ ack, body, view, client }) {
     });
     return;
   }
-  await ack();
 
-  const { channelId, ts, threadTs = null, confirmedBy } = JSON.parse(
+  const { context, channelId, ts, modMessageTs, threadTs = null, confirmedBy } = JSON.parse(
     view.private_metadata || "{}",
   );
+
+  // ── Mod context (top-up payment on an order modification) ──────────────────
+  if (context === "mod") {
+    const modState = modStateMap.get(stateKey(channelId, modMessageTs));
+    if (!modState) {
+      await ack({
+        response_action: "errors",
+        errors: { adjust_amount_block: "Modification state not found — please retry." },
+      });
+      return;
+    }
+    await ack();
+    const { confirmedOrder, mod } = modState;
+
+    if (saveOnly) {
+      mod.stagedPayment = { ...mod.stagedPayment, amountDiff: diff };
+      await client.chat.update({
+        channel: channelId, ts: modMessageTs, text: "Order Modification",
+        blocks: buildModReviewBlocks(mod, confirmedOrder),
+      }).catch(() => {});
+      return;
+    }
+
+    const stagedName = mod.stagedPayment?.payerName;
+    const adjustedAmount = mod.modIncrease - diff;
+    const customerName = stagedName || confirmedOrder.receiptName || confirmedOrder.customer?.name || "";
+    const recipientName = stagedName || (confirmedOrder.receiptName
+      ? confirmedOrder.recipient?.name || confirmedOrder.customer?.name || customerName
+      : confirmedOrder.recipient?.name || customerName);
+
+    let match;
+    try {
+      match = await verifyPayment(customerName, recipientName, adjustedAmount, {
+        branch: confirmedOrder.fulfillment?.branch,
+        slackUserId: confirmedBy || body.user.id,
+      });
+    } catch (err) {
+      await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: `⚠️ Payment verification error: ${err.message}` });
+      return;
+    }
+
+    if (match) {
+      mod.paymentData = match;
+      delete mod.paymentStatus;
+      delete mod.stagedPayment;
+      await applyModification(client, channelId, modMessageTs, confirmedBy || body.user.id);
+    } else {
+      await ephem(client, {
+        channel: channelId, user: body.user.id, threadTs,
+        text: `⚠️ No payment found for adjusted amount *${fmt(adjustedAmount)}*. Try a different value or request an OTP.`,
+      });
+    }
+    return;
+  }
+
+  // ── Order context (pre-confirmation payment match) ──────────────────────────
+  await ack();
+
   const order = getOrder(channelId, ts);
   if (!order) return;
 
+  if (saveOnly) {
+    order.stagedPayment = { ...order.stagedPayment, amountDiff: diff };
+    saveOrder(channelId, ts, order);
+    await client.chat.update({
+      channel: channelId, ts, text: "Review Order", blocks: buildReviewOrderBlocks(order),
+    }).catch(() => {});
+    return;
+  }
+
   // formula: adjustedAmount = orderTotal - diff
   // e.g. orderTotal=10000, diff=-500 → sends 10500 (customer paid more)
+  const stagedName = order.stagedPayment?.payerName;
   const adjustedAmount = order.orderTotal - diff;
-  const customerName = order.receiptName || order.customer?.name || "";
-  const recipientName = order.receiptName
+  const customerName = stagedName || order.receiptName || order.customer?.name || "";
+  const recipientName = stagedName || (order.receiptName
     ? order.recipient?.name || order.customer?.name || customerName
-    : order.recipient?.name || customerName;
+    : order.recipient?.name || customerName);
 
   let match;
   try {
@@ -2580,6 +2683,7 @@ async function handleAmountAdjustSubmit({ ack, body, view, client }) {
   if (match) {
     order.paymentStatus = "verified";
     order.paymentData = match;
+    delete order.stagedPayment;
   } else {
     order.paymentStatus = "not_found";
     await ephem(client, {
@@ -2934,10 +3038,18 @@ async function handleTryPaymentName({ ack, body, client }) {
 
   const channelId = body.container.channel_id;
   const ts = body.container.message_ts;
+  const order = getOrder(channelId, ts);
 
   await client.views.open({
     trigger_id: body.trigger_id,
-    view: buildPaymentNameModal(JSON.stringify({ channelId, ts, threadTs: body.container.thread_ts || null })),
+    view: buildPaymentNameModal(
+      JSON.stringify({ channelId, ts, threadTs: body.container.thread_ts || null }),
+      {
+        stagedAmountDiff: order?.stagedPayment?.amountDiff ?? null,
+        baseAmount: order?.orderTotal ?? null,
+        initialPayerName: order?.stagedPayment?.payerName || null,
+      },
+    ),
   });
 }
 
@@ -2947,6 +3059,9 @@ async function handlePaymentNameSubmit({ ack, body, view, client }) {
   const paymentName = (
     view.state.values?.payment_name_block?.payment_name_input?.value || ""
   ).trim();
+  const saveOnly = (
+    view.state.values?.payment_name_save_block?.payment_name_save_checkbox?.selected_options || []
+  ).length > 0;
 
   // ── Mod context ──────────────────────────────────────────────────────────────
   if (context === "mod") {
@@ -2958,9 +3073,22 @@ async function handlePaymentNameSubmit({ ack, body, view, client }) {
     await ack();
 
     const { confirmedOrder, mod } = modState;
+
+    if (saveOnly) {
+      mod.stagedPayment = { ...mod.stagedPayment, payerName: paymentName };
+      await client.chat.update({
+        channel: channelId, ts: modMessageTs, text: "Order Modification",
+        blocks: buildModReviewBlocks(mod, confirmedOrder),
+      }).catch(() => {});
+      return;
+    }
+
+    const stagedDiff = mod.stagedPayment?.amountDiff;
+    const amount = stagedDiff != null ? mod.modIncrease - stagedDiff : mod.modIncrease;
+
     let match;
     try {
-      match = await verifyPayment(paymentName, paymentName, mod.modIncrease, {
+      match = await verifyPayment(paymentName, paymentName, amount, {
         branch: confirmedOrder.fulfillment?.branch,
         slackUserId: confirmedBy || body.user.id,
       });
@@ -2972,6 +3100,7 @@ async function handlePaymentNameSubmit({ ack, body, view, client }) {
     if (match) {
       mod.paymentData = match;
       delete mod.paymentStatus;
+      delete mod.stagedPayment;
       await applyModification(client, channelId, modMessageTs, confirmedBy || body.user.id);
     } else {
       await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: `⚠️ No payment found for *"${paymentName}"* either. Try another name or request an OTP.` });
@@ -2993,9 +3122,21 @@ async function handlePaymentNameSubmit({ ack, body, view, client }) {
 
   await ack(); // close modal
 
+  if (saveOnly) {
+    order.stagedPayment = { ...order.stagedPayment, payerName: paymentName };
+    saveOrder(channelId, ts, order);
+    await client.chat.update({
+      channel: channelId, ts, text: "Review Order", blocks: buildReviewOrderBlocks(order),
+    }).catch(() => {});
+    return;
+  }
+
+  const stagedDiff = order.stagedPayment?.amountDiff;
+  const amount = stagedDiff != null ? order.orderTotal - stagedDiff : order.orderTotal;
+
   let match;
   try {
-    match = await verifyPayment(paymentName, paymentName, order.orderTotal, {
+    match = await verifyPayment(paymentName, paymentName, amount, {
       deliveryPrice: order.fulfillment?.fee,
       couponCode: order.couponCode,
       branch: order.fulfillment?.branch,
@@ -3009,6 +3150,7 @@ async function handlePaymentNameSubmit({ ack, body, view, client }) {
   if (match) {
     order.paymentStatus = "verified";
     order.paymentData = match;
+    delete order.stagedPayment;
   } else {
     order.paymentStatus = "not_found";
     await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: `⚠️ No payment found for *"${paymentName}"* either. Try another name or request an OTP.` });
@@ -3725,6 +3867,7 @@ module.exports = {
   handleModCityPickerBtn,
   handleModCityPickerSubmit,
   handleModTryPaymentName,
+  handleModAmountAdjust,
   handleModRequestOtp,
   handleModEnterOtp,
   handleVersionCommand,
