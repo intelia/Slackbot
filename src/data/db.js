@@ -41,6 +41,18 @@ db.exec(`
     updated_at    INTEGER NOT NULL,
     PRIMARY KEY (slack_user_id, branch)
   );
+  CREATE TABLE IF NOT EXISTS shared_payment_candidates (
+    channel_ts      TEXT PRIMARY KEY,
+    channel_id      TEXT NOT NULL,
+    ts              TEXT NOT NULL,
+    thread_ts       TEXT,
+    customer_name   TEXT,
+    recipient_name  TEXT,
+    order_total     REAL NOT NULL,
+    client_reference TEXT,
+    marked_by       TEXT,
+    marked_at       INTEGER NOT NULL
+  );
 `);
 
 // user_branches briefly shipped as single-branch-per-user (PK on slack_user_id
@@ -198,6 +210,25 @@ function getConfirmedOrderRow(channelId, ts) {
   return { order: JSON.parse(row.order_json), confirmedBy: row.confirmed_by };
 }
 
+// Fallback for when the channel_ts key a button click re-derives doesn't
+// match what was actually stored (e.g. an order confirmed from an @mention
+// that was itself a reply inside an existing thread — Slack silently
+// re-roots such replies to that thread's true root, which can differ from
+// the mention's own ts recorded as slackRootTs at confirm time). Returns the
+// row's real channelId/ts too, so callers use the correct key from then on.
+function getConfirmedOrderRowByOrderNumber(orderNumber) {
+  if (!orderNumber) return null;
+  const row = db.prepare('SELECT channel_ts, order_json, confirmed_by FROM live_orders WHERE order_number = ?').get(orderNumber);
+  if (!row) return null;
+  const colonIdx = row.channel_ts.indexOf(':');
+  return {
+    channelId: row.channel_ts.slice(0, colonIdx),
+    ts: row.channel_ts.slice(colonIdx + 1),
+    order: JSON.parse(row.order_json),
+    confirmedBy: row.confirmed_by,
+  };
+}
+
 function updateConfirmedOrder(channelId, ts, order) {
   db.prepare(
     'UPDATE live_orders SET order_json = ? WHERE channel_ts = ?'
@@ -276,6 +307,34 @@ function getAllUserBranches() {
   return db.prepare('SELECT slack_user_id, branch FROM user_branches ORDER BY slack_user_id ASC, branch ASC').all();
 }
 
+// ── Shared-payment candidates (CSR-flagged "may cover another order") ───────
+// Orders a CSR has explicitly marked as unresolved (paymentStatus "not_found")
+// and possibly part of a bigger transfer that also covers a sibling order not
+// yet placed. Purely a discovery list for the "Link Payment From Another
+// Order" picker — the actual payment search/allocation lives entirely in
+// zupa-api (verify-sibling-payment + allocateReceiptToOrder); this table just
+// remembers which orders are still waiting to be matched up.
+
+function addSharedPaymentCandidate({ channelId, ts, threadTs, customerName, recipientName, orderTotal, clientReference, markedBy }) {
+  db.prepare(`
+    INSERT OR REPLACE INTO shared_payment_candidates
+      (channel_ts, channel_id, ts, thread_ts, customer_name, recipient_name, order_total, client_reference, marked_by, marked_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(`${channelId}:${ts}`, channelId, ts, threadTs || null, customerName || null, recipientName || null, orderTotal, clientReference || null, markedBy || null, Date.now());
+}
+
+function removeSharedPaymentCandidate(channelId, ts) {
+  db.prepare('DELETE FROM shared_payment_candidates WHERE channel_ts = ?').run(`${channelId}:${ts}`);
+}
+
+function getSharedPaymentCandidate(channelId, ts) {
+  return db.prepare('SELECT * FROM shared_payment_candidates WHERE channel_ts = ?').get(`${channelId}:${ts}`) || null;
+}
+
+function getAllSharedPaymentCandidates() {
+  return db.prepare('SELECT * FROM shared_payment_candidates ORDER BY marked_at DESC').all();
+}
+
 // ── Bot metadata (version tracking, etc.) ────────────────────────────────────
 
 function getMetaValue(key) {
@@ -289,11 +348,13 @@ function setMetaValue(key, value) {
 
 module.exports = {
   findDuplicate, recordOrder,
-  saveConfirmedOrder, getConfirmedOrder, getConfirmedOrderRow, updateConfirmedOrder,
+  saveConfirmedOrder, getConfirmedOrder, getConfirmedOrderRow, getConfirmedOrderRowByOrderNumber, updateConfirmedOrder,
   getDailySummary, getAllOrdersToday, getOrdersForPeriod, getOtpOverridesForPeriod,
   lagosWeekBounds, lagosMonthBounds, lagosDateBoundsForDate, isLastDayOfLagosMonth,
   savePendingOrder, deletePendingOrder, getAllPendingOrders, clearAllPendingOrders,
   getMetaValue, setMetaValue,
   setCsrInitial, getCsrByInitial, getAllCsrInitials,
   addUserBranch, removeUserBranch, getUserBranches, getAllUserBranches,
+  addSharedPaymentCandidate, removeSharedPaymentCandidate,
+  getSharedPaymentCandidate, getAllSharedPaymentCandidates,
 };

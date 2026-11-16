@@ -207,6 +207,27 @@ async function verifyPayment(customerName, recipientName, totalPrice, opts = {})
   );
 }
 
+// Explicit, CSR-driven search for one payment covering a group of orders a
+// CSR has flagged as siblings (see "Mark as possibly shared payment" / "Link
+// Payment From Another Order" in the Slack bot). Pure preview — no IDs, no
+// allocation; the real claim happens later, independently, when each order
+// is actually confirmed. orders: [{ customerName, recipientName, grandTotal }, ...]
+// (at least 2). ctx: { branch, slackUserId }.
+// opts: { amountDiff } — same sign convention as the single-order Adjust
+// Amount modal (negative when the transfer is for more than the group's
+// combined total).
+async function verifySiblingPayment(orders, ctx = {}, opts = {}) {
+  const branchId = resolveBranchId({ branch: ctx.branch, slackUserId: ctx.slackUserId });
+  const body = { orders };
+  if (opts.amountDiff != null) body.amountDiff = opts.amountDiff;
+  const { status, data } = await paymentFetch("payment/order/verify-sibling-payment", body, branchId);
+  if (status === 200 && data.matched) return data;
+  if (status === 404) return null;
+  throw new Error(
+    data.message || `Sibling payment search failed (HTTP ${status})`,
+  );
+}
+
 // Sends a 6-digit OTP to the operator's WhatsApp. Throws on error.
 // order: optional { customer, recipient, orderTotal, items: [{ productName, sizeName, qty, lineTotal }] }
 // slackThreadLink: optional permalink to the Slack thread where the OTP was requested;
@@ -294,6 +315,7 @@ async function lookupReceipt(query, ctx = {}) {
 async function confirmReceiptMatch(transactionRef, orderNumber, ctx = {}) {
   const body = { transactionRef };
   if (orderNumber) body.orderNumber = orderNumber;
+  if (ctx.slackUserId) body.confirmedBy = ctx.slackUserId;
   const branchId = resolveBranchId({ branch: ctx.branch, slackUserId: ctx.slackUserId });
   const { status, data } = await paymentFetch("payment/order/receipt/confirm-match", body, branchId);
   if (status === 200) return data;
@@ -373,6 +395,7 @@ module.exports = {
   pushModification,
   buildModPayload,
   verifyPayment,
+  verifySiblingPayment,
   requestOverrideOtp,
   verifyOverrideOtp,
   lookupReceipt,

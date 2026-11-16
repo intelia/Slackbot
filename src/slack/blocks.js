@@ -450,6 +450,34 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
         },
       ],
     });
+
+    // A separate, unrelated order's payment may actually be the same
+    // transfer as this one (two orders, one transfer) — these two actions
+    // only ever apply while payment search has already failed above, since
+    // once a payment is actually matched there's nothing left to resolve.
+    const sharedNote = order.sharedPaymentCandidate
+      ? `📎 *Marked as possibly shared* — ref \`${order.clientReference || "—"}\``
+      : null;
+    if (sharedNote) {
+      blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: sharedNote }] });
+    }
+    blocks.push({
+      type: "actions",
+      elements: [
+        ...(order.sharedPaymentCandidate
+          ? []
+          : [{
+              type: "button",
+              text: { type: "plain_text", text: "📎  Mark as Possibly Shared Payment" },
+              action_id: "mark_shared_payment",
+            }]),
+        {
+          type: "button",
+          text: { type: "plain_text", text: "🔗  Link Payment From Another Order" },
+          action_id: "link_sibling_payment",
+        },
+      ],
+    });
     return blocks;
   }
 
@@ -2463,6 +2491,87 @@ function buildOtpPendingBlocks(order) {
   ];
 }
 
+// A static checklist (not a search box — this situation is rare enough that
+// listing every currently-marked candidate is fine) of orders a CSR has
+// flagged as "possibly shared," for the current order to be explicitly
+// linked against as a twin/triplet. candidates: rows from
+// getAllSharedPaymentCandidates(), already excluding the current order itself.
+// opts: { stagedPayment } — stagedPayment.siblingRefs is this modal's own
+// "Saved" selection (which orders to combine with — pre-checked if reopened);
+// stagedPayment.payerName/amountDiff come from Adjust Amount / Try Different
+// Name on the current order (not duplicated here, just shown and applied
+// automatically on Search, alongside whichever orders end up selected).
+function buildSiblingPickerModal(candidates, privateMetadata, opts = {}) {
+  const { stagedPayment = null } = opts;
+  const stagedRefs = new Set(stagedPayment?.siblingRefs || []);
+  const options = candidates.map((c) => ({
+    text: {
+      type: "plain_text",
+      text: trunc(`${c.customer_name || c.recipient_name || "Unknown"} — ${fmt(c.order_total)}`, 75),
+    },
+    value: `${c.channel_id}:${c.ts}`,
+  }));
+  const initialOptions = options.filter((o) => stagedRefs.has(o.value));
+
+  const stagedNote = stagedPaymentNote(stagedPayment);
+  const contextLines = ["Select the order(s) that share this payment with the current one."];
+  if (stagedNote) {
+    contextLines.push(`${stagedNote}  _(applied automatically on Search — name/amount come from Adjust Amount / Try Different Name on this order)_`);
+  }
+
+  return {
+    type: "modal",
+    callback_id: "link_sibling_payment_submit",
+    private_metadata: privateMetadata,
+    title: { type: "plain_text", text: "Link Shared Payment" },
+    ...(options.length ? { submit: { type: "plain_text", text: "Continue" } } : {}),
+    close: { type: "plain_text", text: "Cancel" },
+    blocks: options.length
+      ? [
+          {
+            type: "context",
+            elements: [{ type: "mrkdwn", text: contextLines.join("\n") }],
+          },
+          {
+            type: "input",
+            block_id: "sibling_candidates_block",
+            label: { type: "plain_text", text: "Orders marked as possibly shared" },
+            element: {
+              type: "checkboxes",
+              action_id: "sibling_candidates_checkboxes",
+              options,
+              ...(initialOptions.length ? { initial_options: initialOptions } : {}),
+            },
+          },
+          {
+            type: "input",
+            block_id: "sibling_save_block",
+            optional: true,
+            label: { type: "plain_text", text: "Action" },
+            element: {
+              type: "checkboxes",
+              action_id: "sibling_save_checkbox",
+              options: [
+                {
+                  text: { type: "plain_text", text: "💾  Save only — don't search yet (e.g. still waiting on a name/amount correction)" },
+                  value: "save_only",
+                },
+              ],
+            },
+          },
+        ]
+      : [
+          {
+            type: "section",
+            text: {
+              type: "mrkdwn",
+              text: "No orders are currently marked as possibly shared. Ask whoever's handling the other order to click \"Mark as Possibly Shared Payment\" on it first.",
+            },
+          },
+        ],
+  };
+}
+
 // opts: { stagedAmountDiff, baseAmount, initialPayerName } — stagedAmountDiff
 // surfaces an amount diff already "Saved" from the Adjust Amount modal, so
 // the two corrections can be combined on one search.
@@ -2899,6 +3008,7 @@ module.exports = {
   buildPaymentNotFoundBlocks,
   buildOtpPendingBlocks,
   buildPaymentNameModal,
+  buildSiblingPickerModal,
   buildOtpModal,
   buildAvailabilityModal,
   applyAvailabilityFilter,

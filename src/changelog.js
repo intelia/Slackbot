@@ -4,6 +4,14 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: "1.23.0",
+    notes: [
+      "One payment covering more than one order is now supported: mark an order as possibly shared when its payment doesn't match alone, then link it to another order to search for one payment covering both (or more) combined — any name/amount correction already staged on the order is applied automatically",
+      "Fixed Link Payment and Mark Complete showing \"order not found\" for orders confirmed from a mention posted inside an existing long-running thread",
+      "Fixed a payment-matching accuracy issue where two unrelated transfers from the same stranger could incorrectly verify someone else's order just because their total happened to add up",
+    ],
+  },
+  {
     version: "1.22.6",
     notes: [
       "Adjust Amount and Try Different Name (on both the main order and order-modification payment screens) now have a Save option — tick it to stage that correction without searching yet, so a wrong name and a wrong amount can be fixed together on the next search",

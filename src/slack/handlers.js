@@ -16,6 +16,7 @@ const {
   fetchKitchenSummary,
   fetchTerminalDailySummary,
   verifyPayment,
+  verifySiblingPayment,
   requestOverrideOtp,
   verifyOverrideOtp,
   lookupReceipt,
@@ -29,6 +30,7 @@ const {
   saveConfirmedOrder,
   getConfirmedOrder,
   getConfirmedOrderRow,
+  getConfirmedOrderRowByOrderNumber,
   updateConfirmedOrder,
   getDailySummary,
   getAllOrdersToday,
@@ -49,6 +51,10 @@ const {
   removeUserBranch,
   getUserBranches,
   getAllUserBranches,
+  addSharedPaymentCandidate,
+  removeSharedPaymentCandidate,
+  getSharedPaymentCandidate,
+  getAllSharedPaymentCandidates,
 } = require("../data/db");
 const { parseModification } = require("../parser/mod-segmenter");
 const { forceRefresh } = require("../data/loader");
@@ -73,6 +79,7 @@ const {
   buildPaymentNotFoundBlocks,
   buildOtpPendingBlocks,
   buildPaymentNameModal,
+  buildSiblingPickerModal,
   buildOtpModal,
   buildMenuModal,
   buildCitiesModal,
@@ -150,6 +157,7 @@ function saveOrder(channelId, ts, order) {
 function deleteOrder(channelId, ts) {
   orderStateMap.delete(stateKey(channelId, ts));
   deletePendingOrder(channelId, ts);
+  removeSharedPaymentCandidate(channelId, ts); // harmless no-op if never marked
 }
 
 // ── In-memory modification state ──────────────────────────────────────────────
@@ -377,7 +385,14 @@ async function parseAndPostOrderReply(client, channelId, rawText, threadTs, user
 async function handleMentionOrder({ event, client }) {
   const channelId = event.channel;
   const rawText = (event.text || "").replace(/<@[A-Z0-9]+>/g, "").trim();
-  await parseAndPostOrderReply(client, channelId, rawText, event.ts, event.user);
+  // Slack has no nested threads — if this mention is itself a reply inside an
+  // existing thread, event.thread_ts is that thread's true root, and posting
+  // with thread_ts: event.ts (a non-root message) gets silently re-rooted
+  // there anyway. Using the real root up front keeps order.slackRootTs (and
+  // therefore the confirmed-order lookup key) consistent with what Slack
+  // actually reports on every later click in that thread.
+  const threadRoot = event.thread_ts || event.ts;
+  await parseAndPostOrderReply(client, channelId, rawText, threadRoot, event.user);
 }
 
 // ── Message edited: if the edited text still mentions the bot, reparse ───────
@@ -397,13 +412,15 @@ async function handleMessageChanged({ event, client, context }) {
   const botUserId = context && context.botUserId;
   if (!botUserId || !(edited.text || "").includes(`<@${botUserId}>`)) return;
 
+  const threadRoot = edited.thread_ts || edited.ts;
+
   // Once an order's been confirmed/pushed, further edits should go through
   // the thread-reply modification flow (handleThreadMessage), not spawn a
   // brand-new order from an old message.
-  if (getConfirmedOrder(event.channel, edited.ts)) return;
+  if (getConfirmedOrder(event.channel, threadRoot)) return;
 
   const rawText = edited.text.replace(/<@[A-Z0-9]+>/g, "").trim();
-  await parseAndPostOrderReply(client, event.channel, rawText, edited.ts, edited.user);
+  await parseAndPostOrderReply(client, event.channel, rawText, threadRoot, edited.user);
 }
 
 // ── Product picker: dropdown selection ───────────────────────────────────────
@@ -819,6 +836,7 @@ function verifyPaymentBackground(client, order, channelId, ts) {
       if (match) {
         current.paymentStatus = "verified";
         current.paymentData = match;
+        clearSharedPaymentFlag(current, channelId, ts);
       } else {
         current.paymentStatus = "not_found";
       }
@@ -2684,6 +2702,7 @@ async function handleAmountAdjustSubmit({ ack, body, view, client }) {
     order.paymentStatus = "verified";
     order.paymentData = match;
     delete order.stagedPayment;
+    clearSharedPaymentFlag(order, channelId, ts);
   } else {
     order.paymentStatus = "not_found";
     await ephem(client, {
@@ -3151,6 +3170,7 @@ async function handlePaymentNameSubmit({ ack, body, view, client }) {
     order.paymentStatus = "verified";
     order.paymentData = match;
     delete order.stagedPayment;
+    clearSharedPaymentFlag(order, channelId, ts);
   } else {
     order.paymentStatus = "not_found";
     await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: `⚠️ No payment found for *"${paymentName}"* either. Try another name or request an OTP.` });
@@ -3165,6 +3185,188 @@ async function handlePaymentNameSubmit({ ack, body, view, client }) {
       blocks: buildReviewOrderBlocks(order),
     })
     .catch(() => {});
+}
+
+// ── Shared-payment flagging: "two orders, one transfer" ──────────────────────
+// CSR-facing (not manager-gated) — see src/data/db.js shared_payment_candidates
+// and zupa.js verifySiblingPayment. Only ever acts on orders stuck at
+// paymentStatus "not_found": once a payment is actually matched there's
+// nothing left to resolve, so neither action is offered at that point
+// (gated in buildReviewOrderBlocks).
+
+function clearSharedPaymentFlag(order, channelId, ts) {
+  if (order.sharedPaymentCandidate) {
+    delete order.sharedPaymentCandidate;
+    removeSharedPaymentCandidate(channelId, ts);
+  }
+}
+
+function toPaymentSearchNames(order) {
+  const customerName = order.receiptName || order.customer?.name || "";
+  const recipientName = order.receiptName
+    ? order.recipient?.name || order.customer?.name || customerName
+    : order.recipient?.name || customerName;
+  return { customerName, recipientName };
+}
+
+async function handleMarkSharedPayment({ ack, body, client }) {
+  await ack();
+
+  const channelId = body.container.channel_id;
+  const ts = body.container.message_ts;
+  const threadTs = body.container.thread_ts || null;
+  const order = getOrder(channelId, ts);
+  if (!order || order.paymentStatus !== "not_found") return;
+
+  order.sharedPaymentCandidate = true;
+  saveOrder(channelId, ts, order);
+  const { customerName, recipientName } = toPaymentSearchNames(order);
+  addSharedPaymentCandidate({
+    channelId,
+    ts,
+    threadTs,
+    customerName,
+    recipientName,
+    orderTotal: order.orderTotal,
+    clientReference: order.clientReference,
+    markedBy: body.user.id,
+  });
+
+  await client.chat.update({
+    channel: channelId,
+    ts,
+    text: "Review Order",
+    blocks: buildReviewOrderBlocks(order),
+  }).catch(() => {});
+}
+
+async function handleLinkSiblingPayment({ ack, body, client }) {
+  await ack();
+
+  const channelId = body.container.channel_id;
+  const ts = body.container.message_ts;
+  const threadTs = body.container.thread_ts || null;
+  const order = getOrder(channelId, ts);
+  if (!order) return;
+
+  const candidates = getAllSharedPaymentCandidates()
+    .filter((c) => !(c.channel_id === channelId && c.ts === ts));
+
+  const meta = JSON.stringify({ channelId, ts, threadTs });
+  await client.views.open({
+    trigger_id: body.trigger_id,
+    view: buildSiblingPickerModal(candidates, meta, { stagedPayment: order.stagedPayment || null }),
+  });
+}
+
+async function handleLinkSiblingPaymentSubmit({ ack, body, view, client }) {
+  const { channelId, ts, threadTs = null } = JSON.parse(view.private_metadata || "{}");
+  const selected = (
+    view.state.values?.sibling_candidates_block?.sibling_candidates_checkboxes?.selected_options || []
+  ).map((o) => o.value);
+  const saveOnly = (
+    view.state.values?.sibling_save_block?.sibling_save_checkbox?.selected_options || []
+  ).length > 0;
+
+  if (!selected.length) {
+    await ack({
+      response_action: "errors",
+      errors: { sibling_candidates_block: "Select at least one order" },
+    });
+    return;
+  }
+  await ack();
+
+  const order = getOrder(channelId, ts);
+  if (!order) return;
+
+  // "Save only" — stage which order(s) to combine with, same as Adjust
+  // Amount / Try Different Name stage their own field, so a CSR can set this
+  // now and go adjust the name/amount (or vice versa) before finally
+  // searching from whichever modal they reach last.
+  if (saveOnly) {
+    order.stagedPayment = { ...order.stagedPayment, siblingRefs: selected };
+    saveOrder(channelId, ts, order);
+    await client.chat.update({
+      channel: channelId, ts, text: "Review Order", blocks: buildReviewOrderBlocks(order),
+    }).catch(() => {});
+    return;
+  }
+
+  // Resolve each selected candidate to its live draft (falling back to the
+  // snapshot taken when it was marked, if the in-memory draft is gone —
+  // e.g. after a restart before pending orders finish restoring).
+  const siblings = selected.map((v) => {
+    const sep = v.indexOf(":");
+    const cChannelId = v.slice(0, sep);
+    const cTs = v.slice(sep + 1);
+    return {
+      channelId: cChannelId,
+      ts: cTs,
+      order: getOrder(cChannelId, cTs),
+      candidate: getSharedPaymentCandidate(cChannelId, cTs),
+    };
+  }).filter((s) => s.order || s.candidate);
+
+  const group = [
+    { ...toPaymentSearchNames(order), grandTotal: order.orderTotal },
+    ...siblings.map((s) => s.order
+      ? { ...toPaymentSearchNames(s.order), grandTotal: s.order.orderTotal }
+      : { customerName: s.candidate.customer_name, recipientName: s.candidate.recipient_name, grandTotal: s.candidate.order_total }),
+  ];
+  // A name/amount correction already staged on the current order (via Adjust
+  // Amount / Try Different Name's own "Save only") is applied automatically —
+  // this modal doesn't collect them again. The transfer may have been sent
+  // by someone (a friend, a relative) not named on any of the orders, same
+  // idea as "Try Different Name" on a single order.
+  const effectivePayerName = order.stagedPayment?.payerName || null;
+  if (effectivePayerName) {
+    for (const o of group) o.payerName = effectivePayerName;
+  }
+  const effectiveAmountDiff = order.stagedPayment?.amountDiff ?? null;
+
+  let match;
+  try {
+    match = await verifySiblingPayment(
+      group,
+      { branch: order.fulfillment?.branch, slackUserId: body.user.id },
+      { amountDiff: effectiveAmountDiff },
+    );
+  } catch (err) {
+    await ephem(client, { channel: channelId, user: body.user.id, threadTs, text: `⚠️ Sibling payment search failed: ${err.message}` });
+    return;
+  }
+
+  if (!match) {
+    await ephem(client, {
+      channel: channelId, user: body.user.id, threadTs,
+      text: "⚠️ No single payment found covering this group's combined total. Double-check the amounts, or try again once the transfer shows up.",
+    });
+    return;
+  }
+
+  order.paymentStatus = "verified";
+  order.paymentData = match;
+  delete order.sharedPaymentCandidate;
+  delete order.stagedPayment;
+  saveOrder(channelId, ts, order);
+  removeSharedPaymentCandidate(channelId, ts);
+  await client.chat.update({
+    channel: channelId, ts, text: "Review Order", blocks: buildReviewOrderBlocks(order),
+  }).catch(() => {});
+
+  for (const s of siblings) {
+    removeSharedPaymentCandidate(s.channelId, s.ts);
+    if (!s.order) continue; // draft gone — nothing left to re-render, candidate row is cleared above
+    s.order.paymentStatus = "verified";
+    s.order.paymentData = match;
+    delete s.order.sharedPaymentCandidate;
+    delete s.order.stagedPayment;
+    saveOrder(s.channelId, s.ts, s.order);
+    await client.chat.update({
+      channel: s.channelId, ts: s.ts, text: "Review Order", blocks: buildReviewOrderBlocks(s.order),
+    }).catch(() => {});
+  }
 }
 
 async function handleEnterOtp({ ack, body, client }) {
@@ -3246,6 +3448,7 @@ async function handleOtpVerifySubmit({ ack, body, view, client }) {
   await ack();
   order.otpOverride = true;
   order.otpAuthorizedBy = confirmedBy;
+  clearSharedPaymentFlag(order, channelId, ts);
   await executePush(order, confirmedBy, channelId, ts, client, threadTs);
 }
 
@@ -3350,6 +3553,7 @@ async function handleOtpAuthorize({ ack, body, client }) {
   order.otpOverride = true;
   order.otpAuthorizedBy = authorizerId;
   order.otpSlackBlocks = authorisedBlocks;
+  clearSharedPaymentFlag(order, channelId, ts);
   saveOrder(channelId, ts, order);
 
   await client.chat.update({
@@ -3390,6 +3594,34 @@ async function _updateOtpMessageStatus(client, order, statusText) {
 
 // ── OTP receipt linking ───────────────────────────────────────────────────────
 
+// Pulls the Zupa order number back out of a confirmation card's own rendered
+// text (buildConfirmationBlocks always includes "Zupa: `<orderNumber>`").
+function extractOrderNumberFromMessage(message) {
+  const text = message?.blocks?.[0]?.text?.text || message?.text || "";
+  const m = text.match(/Zupa:\s*`([^`]+)`/);
+  return m ? m[1] : null;
+}
+
+// The thread_ts a button click reports doesn't always match the key the
+// order was actually saved under — e.g. an order confirmed from an @mention
+// that was itself posted as a reply inside an existing (often long-running)
+// thread: Slack has no nested threads, so it silently re-roots such replies
+// to that thread's true root, which can differ from the mention's own ts
+// that got recorded as slackRootTs at confirm time (see handleMentionOrder).
+// Falls back to looking the order up by its Zupa order number, parsed from
+// the clicked message's own content, when the direct keyed lookup misses.
+// Returns { channelId, ts, order, confirmedBy } (ts is the row's REAL key —
+// callers must use it for any follow-up update, not the originally-guessed
+// lookupTs) or null if neither lookup finds anything.
+function resolveConfirmedOrder(channelId, threadTs, messageTs, message) {
+  const lookupTs = threadTs || messageTs;
+  const direct = getConfirmedOrderRow(channelId, lookupTs);
+  if (direct) return { channelId, ts: lookupTs, ...direct };
+
+  const orderNumber = extractOrderNumberFromMessage(message);
+  return getConfirmedOrderRowByOrderNumber(orderNumber);
+}
+
 async function handleLinkReceiptBtn({ ack, body, client }) {
   await ack();
 
@@ -3402,32 +3634,28 @@ async function handleLinkReceiptBtn({ ack, body, client }) {
     return;
   }
 
-  const channelId = body.container.channel_id;
   const messageTs = body.container.message_ts;
   const threadTs = body.container.thread_ts || null;
-  // For /parse-order, no thread → lookupTs = messageTs (the confirmation card ts).
-  // For @mention, threadTs = slackRootTs = the key used in saveConfirmedOrder.
-  const lookupTs = threadTs || messageTs;
-
-  const row = getConfirmedOrderRow(channelId, lookupTs);
-  if (!row) {
+  const resolved = resolveConfirmedOrder(body.container.channel_id, threadTs, messageTs, body.message);
+  if (!resolved) {
     await client.chat.postEphemeral({
-      channel: channelId,
+      channel: body.container.channel_id,
       user: body.user.id,
       text: "⚠️ Could not find the confirmed order — please try again.",
     });
     return;
   }
+  const { channelId, ts: lookupTs, order, confirmedBy } = resolved;
 
   const meta = JSON.stringify({
     channelId,
     messageTs,
     lookupTs,
-    confirmedBy: row.confirmedBy,
+    confirmedBy,
   });
   await client.views.open({
     trigger_id: body.trigger_id,
-    view: buildReceiptLookupModal(meta, row.order),
+    view: buildReceiptLookupModal(meta, order),
   });
 }
 
@@ -3728,22 +3956,18 @@ async function handleMarkPaymentComplete({ ack, body, client }) {
     return;
   }
 
-  const channelId = body.container.channel_id;
   const messageTs = body.container.message_ts;
   const threadTs = body.container.thread_ts || null;
-  const lookupTs = threadTs || messageTs;
-
-  const row = getConfirmedOrderRow(channelId, lookupTs);
-  if (!row) {
+  const resolved = resolveConfirmedOrder(body.container.channel_id, threadTs, messageTs, body.message);
+  if (!resolved) {
     await client.chat.postEphemeral({
-      channel: channelId,
+      channel: body.container.channel_id,
       user: body.user.id,
       text: "⚠️ Order not found — please try again.",
     });
     return;
   }
-
-  const order = row.order;
+  const { channelId, ts: lookupTs, order, confirmedBy: resolvedBy } = resolved;
   order.paymentComplete = true;
   order.paymentCompletedBy = body.user.id;
 
@@ -3759,7 +3983,6 @@ async function handleMarkPaymentComplete({ ack, body, client }) {
 
   updateConfirmedOrder(channelId, lookupTs, order);
 
-  const resolvedBy = row.confirmedBy;
   await client.chat.update({
     channel: channelId,
     ts: messageTs,
@@ -3901,6 +4124,9 @@ module.exports = {
   handleRefetchPayment,
   handleTryPaymentName,
   handlePaymentNameSubmit,
+  handleMarkSharedPayment,
+  handleLinkSiblingPayment,
+  handleLinkSiblingPaymentSubmit,
   handleEnterOtp,
   handleOtpVerifySubmit,
   handleBackToReview,

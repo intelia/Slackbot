@@ -86,6 +86,9 @@ function createApp() {
   app.action("back_to_review", handlers.handleBackToReview);
   app.action("amount_adjust", handlers.handleAmountAdjust);
   app.view("amount_adjust_submit", handlers.handleAmountAdjustSubmit);
+  app.action("mark_shared_payment", handlers.handleMarkSharedPayment);
+  app.action("link_sibling_payment", handlers.handleLinkSiblingPayment);
+  app.view("link_sibling_payment_submit", handlers.handleLinkSiblingPaymentSubmit);
   app.view("receipt_lookup_submit", handlers.handleReceiptLookupSubmit);
 
   // Duplicate warning
