@@ -41,6 +41,12 @@ db.exec(`
     updated_at    INTEGER NOT NULL,
     PRIMARY KEY (slack_user_id, branch)
   );
+  CREATE TABLE IF NOT EXISTS no_payment_channels (
+    channel_id   TEXT PRIMARY KEY,
+    channel_name TEXT,
+    set_by       TEXT,
+    updated_at   INTEGER NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS shared_payment_candidates (
     channel_ts      TEXT PRIMARY KEY,
     channel_id      TEXT NOT NULL,
@@ -307,6 +313,31 @@ function getAllUserBranches() {
   return db.prepare('SELECT slack_user_id, branch FROM user_branches ORDER BY slack_user_id ASC, branch ASC').all();
 }
 
+// ── No-payment channels (orders here skip payment verification + OTP) ──────
+// A dedicated channel (e.g. for orders known not to need online payment
+// matching) can be marked exempt — every order parsed there is tagged
+// order.paymentExempt and can always be confirmed, same as an OTP override
+// but without ever involving OTP or a payment search at all.
+
+function setNoPaymentChannel(channelId, channelName, setBy) {
+  db.prepare(
+    'INSERT OR REPLACE INTO no_payment_channels (channel_id, channel_name, set_by, updated_at) VALUES (?, ?, ?, ?)'
+  ).run(channelId, channelName || null, setBy || null, Date.now());
+}
+
+function removeNoPaymentChannel(channelId) {
+  return db.prepare('DELETE FROM no_payment_channels WHERE channel_id = ?').run(channelId).changes;
+}
+
+function isNoPaymentChannel(channelId) {
+  if (!channelId) return false;
+  return !!db.prepare('SELECT 1 FROM no_payment_channels WHERE channel_id = ?').get(channelId);
+}
+
+function getAllNoPaymentChannels() {
+  return db.prepare('SELECT * FROM no_payment_channels ORDER BY updated_at DESC').all();
+}
+
 // ── Shared-payment candidates (CSR-flagged "may cover another order") ───────
 // Orders a CSR has explicitly marked as unresolved (paymentStatus "not_found")
 // and possibly part of a bigger transfer that also covers a sibling order not
@@ -357,4 +388,5 @@ module.exports = {
   addUserBranch, removeUserBranch, getUserBranches, getAllUserBranches,
   addSharedPaymentCandidate, removeSharedPaymentCandidate,
   getSharedPaymentCandidate, getAllSharedPaymentCandidates,
+  setNoPaymentChannel, removeNoPaymentChannel, isNoPaymentChannel, getAllNoPaymentChannels,
 };

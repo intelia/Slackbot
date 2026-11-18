@@ -362,7 +362,9 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
       ? `  _(receipt name: *${order.receiptName}*)_`
       : "";
     let paymentText;
-    if (order.otpOverride) {
+    if (order.paymentExempt) {
+      paymentText = `🏷️  *No payment required* — exempt channel`;
+    } else if (order.otpOverride) {
       const auth = order.otpAuthorizedBy ? `<@${order.otpAuthorizedBy}>` : "operator";
       paymentText = `🔐  *Payment override (OTP)* — authorised by ${auth}`;
     } else if (ps === "verifying") {
@@ -421,8 +423,8 @@ function buildReviewOrderBlocks(order, editingItemIndex = null) {
 
   // When payment not found and order is otherwise ready: replace Confirm with
   // inline options to avoid an extra navigation step.
-  // Skip this gate when OTP override is already authorised.
-  if (order.paymentStatus === "not_found" && canConfirm && !order.otpOverride) {
+  // Skip this gate when OTP override is already authorised, or the channel is payment-exempt.
+  if (order.paymentStatus === "not_found" && canConfirm && !order.otpOverride && !order.paymentExempt) {
     blocks.push({
       type: "actions",
       elements: [
@@ -631,7 +633,9 @@ function buildConfirmationBlocks(order, orderNumber, confirmedBy) {
 
   // ── Payment verification line ─────────────────────────────────────────────
   let paymentLine = null;
-  if (order.otpOverride) {
+  if (order.paymentExempt) {
+    paymentLine = `🏷️  *No payment required* — exempt channel`;
+  } else if (order.otpOverride) {
     const auth = order.otpAuthorizedBy ? `<@${order.otpAuthorizedBy}>` : "operator";
     paymentLine = `🔐  *Payment override (OTP)* — authorised by ${auth}`;
   } else if (order.paymentStatus === "verified" && order.paymentData) {

@@ -8,6 +8,7 @@
   "scripts": {
     "clean-data": "node scripts/clean-data.js",
     "dump-data": "node scripts/dump-data.js",
+    "seed-no-payment-channel": "node scripts/seed-no-payment-channel.js",
     "start": "node app.js",
     "dev": "NODE_OPTIONS=\"--dns-result-order=ipv4first --no-network-family-autoselection\" node --watch app.js"
   },

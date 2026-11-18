@@ -55,6 +55,7 @@ const {
   removeSharedPaymentCandidate,
   getSharedPaymentCandidate,
   getAllSharedPaymentCandidates,
+  isNoPaymentChannel,
 } = require("../data/db");
 const { parseModification } = require("../parser/mod-segmenter");
 const { forceRefresh } = require("../data/loader");
@@ -198,6 +199,17 @@ function _buildClientRefLookup(orders) {
   return lookup;
 }
 
+// Sets up an order's payment-verification state right after parsing — skips
+// payment verification (and therefore OTP) entirely for a channel marked
+// exempt via /set-no-payment-channel, so it can always be confirmed.
+function initPaymentStatus(order, channelId) {
+  if (isNoPaymentChannel(channelId)) {
+    order.paymentExempt = true;
+  } else {
+    order.paymentStatus = "verifying";
+  }
+}
+
 function _enrichUnconfirmedOrders(unconfirmedOrders, lookup) {
   return (unconfirmedOrders || []).map((o) => ({
     ...o,
@@ -305,7 +317,7 @@ async function handleParseOrderSubmit({ ack, body, view, client }) {
   });
 
   const order = await parse(rawText, getUserBranches(submitterId));
-  order.paymentStatus = "verifying";
+  initPaymentStatus(order, channelId);
   order.parsedByInitial = extractInitial(rawText);
   order.parsedBy = resolveParsedBy(order.parsedByInitial, submitterId);
   const blocks = buildReviewOrderBlocks(order);
@@ -318,7 +330,7 @@ async function handleParseOrderSubmit({ ack, body, view, client }) {
       blocks,
     });
     saveOrder(channelId, loading.ts, order);
-    verifyPaymentBackground(client, order, channelId, loading.ts);
+    if (!order.paymentExempt) verifyPaymentBackground(client, order, channelId, loading.ts);
   }
 }
 
@@ -365,7 +377,7 @@ async function parseAndPostOrderReply(client, channelId, rawText, threadTs, user
 
   const order = await parse(rawText, getUserBranches(userId));
   order.slackRootTs = threadTs; // thread root = the mentioning message, not the bot's reply ts
-  order.paymentStatus = "verifying";
+  initPaymentStatus(order, channelId);
   order.parsedByInitial = extractInitial(rawText);
   order.parsedBy = resolveParsedBy(order.parsedByInitial, userId);
   const blocks = buildReviewOrderBlocks(order);
@@ -378,7 +390,7 @@ async function parseAndPostOrderReply(client, channelId, rawText, threadTs, user
       blocks,
     });
     saveOrder(channelId, loading.ts, order);
-    verifyPaymentBackground(client, order, channelId, loading.ts);
+    if (!order.paymentExempt) verifyPaymentBackground(client, order, channelId, loading.ts);
   }
 }
 
@@ -955,9 +967,10 @@ async function handleConfirmOrder({ ack, body, action, client }) {
   }
 
   // ── Payment gate ────────────────────────────────────────────────────────────
-  // OTP override set remotely (manager clicked Authorize in the Slack OTP notification)
-  // bypasses all payment checks.
-  if (order.otpOverride) {
+  // OTP override set remotely (manager clicked Authorize in the Slack OTP notification),
+  // or the order was parsed in a channel marked exempt via /set-no-payment-channel,
+  // both bypass all payment checks.
+  if (order.otpOverride || order.paymentExempt) {
     await executePush(order, body.user.id, channelId, ts, client, threadTs);
     return;
   }
@@ -1039,7 +1052,7 @@ async function handleParseAnyway({ ack, body, client }) {
   });
 
   const order = await parse(pending.rawText, getUserBranches(pending.userId));
-  order.paymentStatus = "verifying";
+  initPaymentStatus(order, channelId);
   order.parsedByInitial = extractInitial(pending.rawText);
   order.parsedBy = resolveParsedBy(order.parsedByInitial, pending.userId);
   const blocks = buildReviewOrderBlocks(order);
@@ -1051,7 +1064,7 @@ async function handleParseAnyway({ ack, body, client }) {
     blocks,
   });
   saveOrder(channelId, warningTs, order);
-  verifyPaymentBackground(client, order, channelId, warningTs);
+  if (!order.paymentExempt) verifyPaymentBackground(client, order, channelId, warningTs);
 }
 
 // ── Cancel parse: dismiss duplicate warning ───────────────────────────────────
@@ -1285,7 +1298,7 @@ async function handleModConfirm({ ack, body, client }) {
 
   const modIncrease = computeModIncrease(mod, confirmedOrder);
 
-  if (modIncrease > 0) {
+  if (modIncrease > 0 && !confirmedOrder.paymentExempt) {
     const customerName = confirmedOrder.receiptName || confirmedOrder.customer?.name || "";
     const recipientName = confirmedOrder.receiptName
       ? (confirmedOrder.recipient?.name || confirmedOrder.customer?.name || customerName)
