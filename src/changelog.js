@@ -4,6 +4,12 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: "1.24.0",
+    notes: [
+      "Orders placed via the storefront or WhatsApp (not through this bot) now post automatically to a dedicated channel as they come in, so staff can see every order regardless of where it was placed",
+    ],
+  },
+  {
     version: "1.23.0",
     notes: [
       "One payment covering more than one order is now supported: mark an order as possibly shared when its payment doesn't match alone, then link it to another order to search for one payment covering both (or more) combined — any name/amount correction already staged on the order is applied automatically",

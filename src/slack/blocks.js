@@ -719,6 +719,123 @@ function buildConfirmationBlocks(order, orderNumber, confirmedBy) {
   return blocks;
 }
 
+// ── External order notification (storefront / WhatsApp) ──────────────────────
+// `order` is the raw shape returned by zupa-api's GET /kitchen-api/orders
+// (see src/slack/external-orders.js) — not a Slack-bot DraftOrder.
+
+function platformLabel(platform) {
+  if (!platform) return "🛒 Storefront";
+  if (platform === "WhatsApp-AI") return "💬 WhatsApp";
+  return `📥 ${platform}`;
+}
+
+function buildExternalOrderBlocks(order) {
+  const blocks = [];
+  const amounts = order.amounts || {};
+
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: `📥  *NEW ORDER*  ·  ${platformLabel(order.platform)}  ·  Zupa: \`${order.orderNumber}\``,
+    },
+  });
+  blocks.push({ type: "divider" });
+
+  const customerParts = [order.customer?.name, order.customer?.phoneNumber].filter(
+    Boolean,
+  );
+  blocks.push({
+    type: "section",
+    text: {
+      type: "mrkdwn",
+      text: `*CUSTOMER*\n${customerParts.join("  ·  ") || "—"}`,
+    },
+  });
+
+  if (order.recipient && (order.recipient.name || order.recipient.phoneNumber)) {
+    const rParts = [order.recipient.name, order.recipient.phoneNumber].filter(
+      Boolean,
+    );
+    blocks.push({
+      type: "context",
+      elements: [
+        { type: "mrkdwn", text: `📦  *Recipient:*  ${rParts.join("  ·  ")}` },
+      ],
+    });
+  }
+
+  const isPickup = !order.deliveryLocation?.address;
+  const fulfillmentText = isPickup
+    ? `◉  *Pickup*${order.deliveryType?.name ? "  —  " + order.deliveryType.name : ""}  _(₦0)_`
+    : `🚚  *Delivery* — ${order.deliveryLocation.address}${order.deliveryType?.name ? "  (" + order.deliveryType.name + ")" : ""}  —  ${fmt(amounts.deliveryAmount || order.deliveryType?.price || 0)}`;
+  blocks.push({
+    type: "section",
+    text: { type: "mrkdwn", text: fulfillmentText },
+  });
+
+  blocks.push({ type: "divider" });
+  blocks.push({ type: "section", text: { type: "mrkdwn", text: "*ITEMS*" } });
+
+  for (const item of order.orderItems || []) {
+    const qty = item.quantity || 1;
+    const unitPrice = item.product?.unitPrice || 0;
+    const unitNote = qty > 1 ? `  _(${fmt(unitPrice)} each)_` : "";
+    blocks.push({
+      type: "section",
+      text: {
+        type: "mrkdwn",
+        text: `×${qty}  *${item.product?.name || "Unknown item"}*  —  ${fmt(unitPrice * qty)}${unitNote}`,
+      },
+    });
+  }
+
+  blocks.push({ type: "divider" });
+
+  const totalsLines = [
+    `Items:  *${fmt(amounts.itemsTotal || 0)}*`,
+    `Delivery:  *${fmt(amounts.deliveryAmount || 0)}*`,
+  ];
+  if (amounts.discountValue) {
+    totalsLines.push(`Discount:  *-${fmt(amounts.discountValue)}*`);
+  }
+  totalsLines.push(`─────────────────`);
+  totalsLines.push(`TOTAL:  *${fmt(amounts.grandTotal ?? amounts.total ?? 0)}*`);
+  blocks.push({
+    type: "section",
+    text: { type: "mrkdwn", text: totalsLines.join("\n") },
+  });
+
+  if (order.specialNote) {
+    blocks.push({
+      type: "context",
+      elements: [{ type: "mrkdwn", text: `📌  _${order.specialNote}_` }],
+    });
+  }
+
+  const createdAt = order.createdAt
+    ? new Date(order.createdAt).toLocaleString("en-NG", {
+        timeZone: "Africa/Lagos",
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : null;
+  blocks.push({
+    type: "context",
+    elements: [
+      {
+        type: "mrkdwn",
+        text: `${createdAt ? `🕐  ${createdAt}  ·  ` : ""}Status: *${order.status || "—"}*`,
+      },
+    ],
+  });
+
+  return blocks;
+}
+
 // ── Pre-parse duplicate warning ───────────────────────────────────────────────
 
 function buildDuplicateWarningBlocks(duplicate) {
@@ -2992,6 +3109,7 @@ module.exports = {
   trunc,
   buildReviewOrderBlocks,
   buildConfirmationBlocks,
+  buildExternalOrderBlocks,
   buildDuplicateWarningBlocks,
   buildZonePickerModal,
   buildDatePickerModal,

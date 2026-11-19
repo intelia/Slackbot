@@ -47,6 +47,12 @@ db.exec(`
     set_by       TEXT,
     updated_at   INTEGER NOT NULL
   );
+  CREATE TABLE IF NOT EXISTS notified_external_orders (
+    order_id     TEXT PRIMARY KEY,
+    order_number TEXT,
+    platform     TEXT,
+    posted_at    INTEGER NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS shared_payment_candidates (
     channel_ts      TEXT PRIMARY KEY,
     channel_id      TEXT NOT NULL,
@@ -338,6 +344,26 @@ function getAllNoPaymentChannels() {
   return db.prepare('SELECT * FROM no_payment_channels ORDER BY updated_at DESC').all();
 }
 
+// ── External order notifications (storefront / WhatsApp, dedup cache) ───────
+// Prevents re-posting the same zupa-api order when a poll's lookback window
+// overlaps the previous one (see src/slack/external-orders.js).
+
+function wasExternalOrderNotified(orderId) {
+  return !!db.prepare('SELECT 1 FROM notified_external_orders WHERE order_id = ?').get(orderId);
+}
+
+function markExternalOrderNotified(orderId, orderNumber, platform) {
+  db.prepare(
+    'INSERT OR IGNORE INTO notified_external_orders (order_id, order_number, platform, posted_at) VALUES (?, ?, ?, ?)'
+  ).run(orderId, orderNumber || null, platform || null, Date.now());
+}
+
+// Keeps the dedup cache from growing forever — only the last few days of
+// overlap window matter, so anything older is safe to drop.
+function pruneOldNotifiedExternalOrders(olderThanMs = 7 * 86_400_000) {
+  db.prepare('DELETE FROM notified_external_orders WHERE posted_at < ?').run(Date.now() - olderThanMs);
+}
+
 // ── Shared-payment candidates (CSR-flagged "may cover another order") ───────
 // Orders a CSR has explicitly marked as unresolved (paymentStatus "not_found")
 // and possibly part of a bigger transfer that also covers a sibling order not
@@ -389,4 +415,5 @@ module.exports = {
   addSharedPaymentCandidate, removeSharedPaymentCandidate,
   getSharedPaymentCandidate, getAllSharedPaymentCandidates,
   setNoPaymentChannel, removeNoPaymentChannel, isNoPaymentChannel, getAllNoPaymentChannels,
+  wasExternalOrderNotified, markExternalOrderNotified, pruneOldNotifiedExternalOrders,
 };

@@ -9,6 +9,7 @@ const {
 } = require("./src/slack/eod");
 const { restorePendingOrders } = require("./src/slack/handlers");
 const { scheduleSubscriptionReminder } = require("./src/slack/subscription");
+const { startExternalOrdersPolling } = require("./src/slack/external-orders");
 
 // @slack/socket-mode's finity state machine throws synchronously when Slack
 // sends 'server explicit disconnect' in the 'connecting' state — a known SDK
@@ -43,6 +44,7 @@ process.on("uncaughtException", (err) => {
 
   scheduleEodSummary(app.client);
   scheduleSubscriptionReminder(app.client);
+  startExternalOrdersPolling(app.client);
 
   // Restore pending orders first, then announce (notification includes restore status + changelog if version changed)
   restorePendingOrders(app.client)
