@@ -407,7 +407,7 @@ module.exports = {
   findDuplicate, recordOrder,
   saveConfirmedOrder, getConfirmedOrder, getConfirmedOrderRow, getConfirmedOrderRowByOrderNumber, updateConfirmedOrder,
   getDailySummary, getAllOrdersToday, getOrdersForPeriod, getOtpOverridesForPeriod,
-  lagosWeekBounds, lagosMonthBounds, lagosDateBoundsForDate, isLastDayOfLagosMonth,
+  lagosDateBounds, lagosWeekBounds, lagosMonthBounds, lagosDateBoundsForDate, isLastDayOfLagosMonth,
   savePendingOrder, deletePendingOrder, getAllPendingOrders, clearAllPendingOrders,
   getMetaValue, setMetaValue,
   setCsrInitial, getCsrByInitial, getAllCsrInitials,

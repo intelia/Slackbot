@@ -17,6 +17,7 @@ const {
   wasExternalOrderNotified,
   markExternalOrderNotified,
   pruneOldNotifiedExternalOrders,
+  lagosDateBounds,
 } = require("../data/db");
 
 const POLL_CURSOR_KEY = "external_orders_poll_cursor";
@@ -51,7 +52,11 @@ async function pollExternalOrders(client) {
     return;
   }
 
-  const since = new Date(new Date(cursor).getTime() - LOOKBACK_MS).toISOString();
+  // Never reach past the start of today (Lagos time) — if the bot was down
+  // for a while, catch up on today only instead of replaying the backlog.
+  const { startMs: todayStartMs } = lagosDateBounds(0);
+  const sinceMs = Math.max(new Date(cursor).getTime() - LOOKBACK_MS, todayStartMs);
+  const since = new Date(sinceMs).toISOString();
   const orders = await fetchOrdersSince(since);
   if (orders.length === 0) return;
 
