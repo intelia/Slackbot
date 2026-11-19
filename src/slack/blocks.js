@@ -796,8 +796,15 @@ function buildExternalOrderBlocks(order) {
     `Items:  *${fmt(amounts.itemsTotal || 0)}*`,
     `Delivery:  *${fmt(amounts.deliveryAmount || 0)}*`,
   ];
-  if (amounts.discountValue) {
-    totalsLines.push(`Discount:  *-${fmt(amounts.discountValue)}*`);
+  let discountAmount = 0;
+  if (amounts.discountType === "percent") {
+    discountAmount = ((amounts.discountValue || 0) / 100) * (amounts.itemsTotal || 0);
+  } else if (amounts.discountType === "amount") {
+    discountAmount = amounts.discountValue || 0;
+  }
+  if (discountAmount) {
+    const pctNote = amounts.discountType === "percent" ? `  _(${amounts.discountValue}% off)_` : "";
+    totalsLines.push(`Discount:  *-${fmt(discountAmount)}*${pctNote}`);
   }
   totalsLines.push(`─────────────────`);
   totalsLines.push(`TOTAL:  *${fmt(amounts.grandTotal ?? amounts.total ?? 0)}*`);
@@ -823,15 +830,12 @@ function buildExternalOrderBlocks(order) {
         minute: "2-digit",
       })
     : null;
-  blocks.push({
-    type: "context",
-    elements: [
-      {
-        type: "mrkdwn",
-        text: `${createdAt ? `🕐  ${createdAt}  ·  ` : ""}Status: *${order.status || "—"}*`,
-      },
-    ],
-  });
+  if (createdAt) {
+    blocks.push({
+      type: "context",
+      elements: [{ type: "mrkdwn", text: `🕐  ${createdAt}` }],
+    });
+  }
 
   return blocks;
 }
