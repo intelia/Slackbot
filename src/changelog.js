@@ -4,6 +4,13 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: "1.25.0",
+    notes: [
+      "Adjust Amount now allows matching a payment of any amount above the order/top-up total (previously capped at ±₦1,000) — reducing the search amount below the total is still capped at ₦1,000",
+      "Added support for exempting a dedicated channel from payment verification and OTP entirely — every order parsed there can always be confirmed (set up once per channel, it's not a day-to-day toggle)",
+    ],
+  },
+  {
     version: "1.24.0",
     notes: [
       "Orders placed via the storefront or WhatsApp (not through this bot) now post automatically to a dedicated channel as they come in, so staff can see every order regardless of where it was placed",

@@ -2530,10 +2530,11 @@ function buildAmountAdjustModal(privateMetadata, baseAmount, limit, opts = {}) {
     `${baseLabel}: *${fmt(baseAmount)}*`,
     ``,
     `Enter the difference between the ${baseLabel.toLowerCase()} and the actual payment amount.`,
-    `Use a *negative* value if the customer paid *more* than this amount.`,
+    `Use a *negative* value if the customer paid *more* than this amount — no limit on how much more.`,
+    `Use a *positive* value if the customer paid *less* — capped at ${fmt(limit)}.`,
     ``,
     `_Example: ${baseLabel.toLowerCase()} ₦10,000, customer paid ₦10,500 → enter \`-500\`_`,
-    `_Maximum allowed: ±${fmt(limit)}_`,
+    `_Example: ${baseLabel.toLowerCase()} ₦40,000, customer paid ₦65,000 → enter \`-25000\`_`,
   ];
   if (stagedPayerName) {
     descLines.push(``, `📌 *Staged name:* ${stagedPayerName}  _(combined in automatically unless you tick Save below)_`);

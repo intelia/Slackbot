@@ -2607,10 +2607,15 @@ async function handleAmountAdjustSubmit({ ack, body, view, client }) {
     });
     return;
   }
-  if (Math.abs(diff) > PAYMENT_ADJUSTMENT_LIMIT) {
+  // A negative diff raises the search amount above the base total (customer
+  // paid more) — unlimited, since there's no risk in searching for a larger,
+  // real payment. A positive diff lowers it below the base total (customer
+  // paid less) — capped, since that's the direction that could be abused to
+  // match a smaller, unrelated payment against an order it doesn't cover.
+  if (diff > PAYMENT_ADJUSTMENT_LIMIT) {
     await ack({
       response_action: "errors",
-      errors: { adjust_amount_block: `Maximum allowed difference is ±${fmt(PAYMENT_ADJUSTMENT_LIMIT)}` },
+      errors: { adjust_amount_block: `Maximum allowed reduction is ${fmt(PAYMENT_ADJUSTMENT_LIMIT)} — use a negative value for no limit if the customer paid more` },
     });
     return;
   }
