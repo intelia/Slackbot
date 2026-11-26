@@ -4,17 +4,35 @@ const store = require('../data/store');
 
 function namedZones() { return store.getCities().namedZones; }
 
+// One-off flash delivery discount: matches the window/threshold/amount
+// zupa-api applies server-side (customer_order.js, order.js). A CSR-entered
+// statedTotal for a qualifying order already has this baked in, so a gap
+// against a zone's raw price alone would wrongly read as a mismatch — this
+// lets gap-matching recognize the discounted price too. Remove once the
+// campaign ends.
+const FLASH_DELIVERY_DISCOUNT_THRESHOLD = 10000;
+const FLASH_DELIVERY_DISCOUNT_AMOUNT = 6000;
+const FLASH_DELIVERY_DISCOUNT_END = new Date('2026-11-27T12:00:00+01:00'); // Africa/Lagos (WAT)
+
+function zonePriceMatchesGap(zonePrice, gap, itemsSubtotal) {
+  if (zonePrice === gap) return true;
+  const flashEligible =
+    Date.now() < FLASH_DELIVERY_DISCOUNT_END.getTime() &&
+    itemsSubtotal >= FLASH_DELIVERY_DISCOUNT_THRESHOLD;
+  return flashEligible && Math.max(0, zonePrice - FLASH_DELIVERY_DISCOUNT_AMOUNT) === gap;
+}
+
 // Match a monetary gap to a known named zone fee (base zones only)
-function gapMatchesZone(gap) {
+function gapMatchesZone(gap, itemsSubtotal) {
   if (!gap || gap <= 0) return null;
-  return namedZones().find(z => !z.isSurge && z.price === gap) || null;
+  return namedZones().find(z => !z.isSurge && zonePriceMatchesGap(z.price, gap, itemsSubtotal)) || null;
 }
 
 // Match a monetary gap to a surge zone fee
-function gapMatchesSurge(gap, baseZone) {
+function gapMatchesSurge(gap, baseZone, itemsSubtotal) {
   if (!gap || gap <= 0 || !baseZone) return null;
   const surgeIds = baseZone.surgeTwinIds || [];
-  return namedZones().find(z => surgeIds.includes(z.id) && z.price === gap) || null;
+  return namedZones().find(z => surgeIds.includes(z.id) && zonePriceMatchesGap(z.price, gap, itemsSubtotal)) || null;
 }
 
 function fmt(n) {
@@ -73,7 +91,7 @@ function reconcile(items, fulfillment, statedTotal) {
     // Check if gap matches current zone's base fee (delivery not yet added)
     if (fulfillment.zoneId && !fulfillment.resolved) {
       const zone = namedZones().find(z => z.id === fulfillment.zoneId);
-      if (zone && zone.price === gap) {
+      if (zone && zonePriceMatchesGap(zone.price, gap, itemsSubtotal)) {
         const updatedFulfillment = { ...fulfillment, fee: gap, resolved: true };
         return {
           reconciliation: {
@@ -91,7 +109,7 @@ function reconcile(items, fulfillment, statedTotal) {
     // Check if gap matches a surge twin of the current zone
     if (fulfillment.zoneId) {
       const zone = namedZones().find(z => z.id === fulfillment.zoneId);
-      const surge = gapMatchesSurge(gap, zone);
+      const surge = gapMatchesSurge(gap, zone, itemsSubtotal);
       if (surge) {
         const updatedFulfillment = { ...fulfillment, fee: gap, zoneId: surge.id, zoneName: surge.name, resolved: true };
         return {
@@ -108,7 +126,7 @@ function reconcile(items, fulfillment, statedTotal) {
     }
 
     // Check if gap matches any named zone (no zone set yet — infer from total)
-    const inferredZone = gapMatchesZone(gap);
+    const inferredZone = gapMatchesZone(gap, itemsSubtotal);
     if (inferredZone) {
       const updatedFulfillment = {
         ...fulfillment,
