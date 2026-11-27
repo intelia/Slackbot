@@ -9,7 +9,7 @@ const {
   pickupBranch,
 } = require("../parser/matcher");
 const store = require("../data/store");
-const { reconcile, applyFlashDiscount } = require("../parser/reconciler");
+const { reconcile } = require("../parser/reconciler");
 const {
   pushToZupa,
   pushModification,
@@ -738,8 +738,6 @@ async function handleZonePickerSubmit({ ack, body, view, client }) {
     view.state.values.address_input?.address_text?.value || ""
   ).trim();
 
-  const itemsSubtotal = (order.items || []).reduce((s, i) => s + (i.lineTotal || 0), 0);
-
   if (namedZoneId) {
     const zone = getZoneById(namedZoneId);
     if (zone) {
@@ -747,7 +745,7 @@ async function handleZonePickerSubmit({ ack, body, view, client }) {
       order.fulfillment.zoneId = zone.id;
       order.fulfillment.zoneName = zone.name;
       order.fulfillment.branch = zone.branch;
-      order.fulfillment.fee = applyFlashDiscount(zone.price, itemsSubtotal);
+      order.fulfillment.fee = zone.price;
       order.fulfillment.resolved = true;
     }
   } else if (rideHailId) {
@@ -756,7 +754,7 @@ async function handleZonePickerSubmit({ ack, body, view, client }) {
       order.fulfillment.type = "delivery";
       order.fulfillment.zoneId = tier.id;
       order.fulfillment.zoneName = tier.name;
-      order.fulfillment.fee = applyFlashDiscount(tier.price, itemsSubtotal);
+      order.fulfillment.fee = tier.price;
       order.fulfillment.branch = tier.branch;
       order.fulfillment.resolved = true;
     }
@@ -1263,8 +1261,7 @@ async function applyModification(client, channelId, modMessageTs, modifiedBy) {
 }
 
 // Items subtotal a modification would leave in place (current confirmed
-// items, plus this mod's adds/removes) — used both to compute the payment
-// increase and to decide flash-discount eligibility for a newly picked zone.
+// items, plus this mod's adds/removes) — used to compute the payment increase.
 function computeModItemsSubtotal(mod, confirmedOrder) {
   // Current confirmed items total (reflects all previous mods applied to items).
   const currentItemsTotal = (confirmedOrder.items || []).reduce((s, i) => s + (i.lineTotal || 0), 0);
@@ -1630,12 +1627,10 @@ async function handleModZoneSelect({ ack, body, client }) {
   const zone = getZoneById(zoneId);
   if (!zone) return;
 
-  const itemsSubtotal = computeModItemsSubtotal(modState.mod, modState.confirmedOrder);
-
   modState.mod.newZoneId = zone.id;
   modState.mod.newZoneName = zone.name;
   modState.mod.newBranch = zone.branch;
-  modState.mod.newFee = applyFlashDiscount(zone.price, itemsSubtotal);
+  modState.mod.newFee = zone.price;
 
   await client.chat.update({
     channel: channelId,
@@ -1687,7 +1682,6 @@ async function handleModCityPickerSubmit({ ack, body, view, client }) {
   ).trim();
 
   const cities = store.getCities();
-  const itemsSubtotal = computeModItemsSubtotal(modState.mod, modState.confirmedOrder);
 
   if (namedZoneId) {
     const zone = getZoneById(namedZoneId);
@@ -1695,7 +1689,7 @@ async function handleModCityPickerSubmit({ ack, body, view, client }) {
       modState.mod.newZoneId   = zone.id;
       modState.mod.newZoneName = zone.name;
       modState.mod.newBranch   = zone.branch;
-      modState.mod.newFee      = applyFlashDiscount(zone.price, itemsSubtotal);
+      modState.mod.newFee      = zone.price;
       modState.mod.newAddress  = addressText || zone.name;
     }
   } else if (rideHailId) {
@@ -1704,7 +1698,7 @@ async function handleModCityPickerSubmit({ ack, body, view, client }) {
       modState.mod.newZoneId   = tier.id;
       modState.mod.newZoneName = tier.name;
       modState.mod.newBranch   = tier.branch;
-      modState.mod.newFee      = applyFlashDiscount(tier.price, itemsSubtotal);
+      modState.mod.newFee      = tier.price;
       modState.mod.newAddress  = addressText || tier.name;
     }
   } else if (pickupId) {

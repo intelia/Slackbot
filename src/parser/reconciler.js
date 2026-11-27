@@ -4,46 +4,17 @@ const store = require('../data/store');
 
 function namedZones() { return store.getCities().namedZones; }
 
-// One-off flash delivery discount: zupa-api applies this server-side
-// (customer_order.js, order.js) for orders placed through the normal
-// checkout, but orders built manually in this bot never go through that
-// code path — so the bot has to apply the same discount itself, to the
-// zone/tier catalogue price, any time it assigns a delivery fee. Remove
-// once the campaign ends.
-const FLASH_DELIVERY_DISCOUNT_THRESHOLD = 10000;
-const FLASH_DELIVERY_DISCOUNT_AMOUNT = 6000;
-const FLASH_DELIVERY_DISCOUNT_END = new Date('2026-11-27T23:59:00+01:00'); // Africa/Lagos (WAT)
-
-function flashDiscountEligible(itemsSubtotal) {
-  return Date.now() < FLASH_DELIVERY_DISCOUNT_END.getTime() &&
-    itemsSubtotal >= FLASH_DELIVERY_DISCOUNT_THRESHOLD;
-}
-
-// Apply the flash discount to a raw catalogue delivery fee. Use this
-// everywhere a zone/tier price is assigned as the fee — never on a fee the
-// customer/CSR explicitly stated, since that's already whatever they were
-// actually charged.
-function applyFlashDiscount(fee, itemsSubtotal) {
-  if (!fee || !flashDiscountEligible(itemsSubtotal)) return fee;
-  return Math.max(0, fee - FLASH_DELIVERY_DISCOUNT_AMOUNT);
-}
-
-function zonePriceMatchesGap(zonePrice, gap, itemsSubtotal) {
-  if (zonePrice === gap) return true;
-  return flashDiscountEligible(itemsSubtotal) && applyFlashDiscount(zonePrice, itemsSubtotal) === gap;
-}
-
 // Match a monetary gap to a known named zone fee (base zones only)
-function gapMatchesZone(gap, itemsSubtotal) {
+function gapMatchesZone(gap) {
   if (!gap || gap <= 0) return null;
-  return namedZones().find(z => !z.isSurge && zonePriceMatchesGap(z.price, gap, itemsSubtotal)) || null;
+  return namedZones().find(z => !z.isSurge && z.price === gap) || null;
 }
 
 // Match a monetary gap to a surge zone fee
-function gapMatchesSurge(gap, baseZone, itemsSubtotal) {
+function gapMatchesSurge(gap, baseZone) {
   if (!gap || gap <= 0 || !baseZone) return null;
   const surgeIds = baseZone.surgeTwinIds || [];
-  return namedZones().find(z => surgeIds.includes(z.id) && zonePriceMatchesGap(z.price, gap, itemsSubtotal)) || null;
+  return namedZones().find(z => surgeIds.includes(z.id) && z.price === gap) || null;
 }
 
 function fmt(n) {
@@ -102,7 +73,7 @@ function reconcile(items, fulfillment, statedTotal) {
     // Check if gap matches current zone's base fee (delivery not yet added)
     if (fulfillment.zoneId && !fulfillment.resolved) {
       const zone = namedZones().find(z => z.id === fulfillment.zoneId);
-      if (zone && zonePriceMatchesGap(zone.price, gap, itemsSubtotal)) {
+      if (zone && zone.price === gap) {
         const updatedFulfillment = { ...fulfillment, fee: gap, resolved: true };
         return {
           reconciliation: {
@@ -120,7 +91,7 @@ function reconcile(items, fulfillment, statedTotal) {
     // Check if gap matches a surge twin of the current zone
     if (fulfillment.zoneId) {
       const zone = namedZones().find(z => z.id === fulfillment.zoneId);
-      const surge = gapMatchesSurge(gap, zone, itemsSubtotal);
+      const surge = gapMatchesSurge(gap, zone);
       if (surge) {
         const updatedFulfillment = { ...fulfillment, fee: gap, zoneId: surge.id, zoneName: surge.name, resolved: true };
         return {
@@ -137,7 +108,7 @@ function reconcile(items, fulfillment, statedTotal) {
     }
 
     // Check if gap matches any named zone (no zone set yet — infer from total)
-    const inferredZone = gapMatchesZone(gap, itemsSubtotal);
+    const inferredZone = gapMatchesZone(gap);
     if (inferredZone) {
       const updatedFulfillment = {
         ...fulfillment,
@@ -174,4 +145,4 @@ function reconcile(items, fulfillment, statedTotal) {
   };
 }
 
-module.exports = { reconcile, applyFlashDiscount };
+module.exports = { reconcile };
