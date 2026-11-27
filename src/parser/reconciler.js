@@ -12,7 +12,7 @@ function namedZones() { return store.getCities().namedZones; }
 // once the campaign ends.
 const FLASH_DELIVERY_DISCOUNT_THRESHOLD = 10000;
 const FLASH_DELIVERY_DISCOUNT_AMOUNT = 6000;
-const FLASH_DELIVERY_DISCOUNT_END = new Date('2026-11-27T16:30:00+01:00'); // Africa/Lagos (WAT)
+const FLASH_DELIVERY_DISCOUNT_END = new Date('2026-11-27T23:59:00+01:00'); // Africa/Lagos (WAT)
 
 function flashDiscountEligible(itemsSubtotal) {
   return Date.now() < FLASH_DELIVERY_DISCOUNT_END.getTime() &&
