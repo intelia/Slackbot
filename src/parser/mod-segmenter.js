@@ -3,6 +3,7 @@
 const { createStructuredCompletion } = require('./ai-client');
 const store      = require('../data/store');
 const { matchProduct, matchZone, normalize } = require('./matcher');
+const { applyFlashDiscount } = require('./reconciler');
 
 function buildSystemPrompt(existingItems) {
   const todayLagos = new Date().toLocaleDateString('en-CA', { timeZone: 'Africa/Lagos' }); // YYYY-MM-DD
@@ -134,10 +135,15 @@ function resolve(seg, confirmedOrder, restrictBranches) {
   if (seg.newAddress) {
     const zone = matchZone(seg.newAddress, restrictBranches);
     if (zone) {
+      const currentItemsTotal = (confirmedOrder.items || []).reduce((s, i) => s + (i.lineTotal || 0), 0);
+      const removedTotal = removeItems.reduce((s, i) => s + (i.lineTotal || 0), 0);
+      const addedTotal = addItems.reduce((s, i) => s + (i.lineTotal || 0), 0);
+      const itemsSubtotal = currentItemsTotal - removedTotal + addedTotal;
+
       newZoneId   = zone.id;
       newZoneName = zone.name;
       newBranch   = zone.branch;
-      newFee      = zone.price;
+      newFee      = applyFlashDiscount(zone.price, itemsSubtotal);
     }
   }
 

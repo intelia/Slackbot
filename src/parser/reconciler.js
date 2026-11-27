@@ -4,22 +4,33 @@ const store = require('../data/store');
 
 function namedZones() { return store.getCities().namedZones; }
 
-// One-off flash delivery discount: matches the window/threshold/amount
-// zupa-api applies server-side (customer_order.js, order.js). A CSR-entered
-// statedTotal for a qualifying order already has this baked in, so a gap
-// against a zone's raw price alone would wrongly read as a mismatch — this
-// lets gap-matching recognize the discounted price too. Remove once the
-// campaign ends.
+// One-off flash delivery discount: zupa-api applies this server-side
+// (customer_order.js, order.js) for orders placed through the normal
+// checkout, but orders built manually in this bot never go through that
+// code path — so the bot has to apply the same discount itself, to the
+// zone/tier catalogue price, any time it assigns a delivery fee. Remove
+// once the campaign ends.
 const FLASH_DELIVERY_DISCOUNT_THRESHOLD = 10000;
 const FLASH_DELIVERY_DISCOUNT_AMOUNT = 6000;
 const FLASH_DELIVERY_DISCOUNT_END = new Date('2026-11-27T12:00:00+01:00'); // Africa/Lagos (WAT)
 
+function flashDiscountEligible(itemsSubtotal) {
+  return Date.now() < FLASH_DELIVERY_DISCOUNT_END.getTime() &&
+    itemsSubtotal >= FLASH_DELIVERY_DISCOUNT_THRESHOLD;
+}
+
+// Apply the flash discount to a raw catalogue delivery fee. Use this
+// everywhere a zone/tier price is assigned as the fee — never on a fee the
+// customer/CSR explicitly stated, since that's already whatever they were
+// actually charged.
+function applyFlashDiscount(fee, itemsSubtotal) {
+  if (!fee || !flashDiscountEligible(itemsSubtotal)) return fee;
+  return Math.max(0, fee - FLASH_DELIVERY_DISCOUNT_AMOUNT);
+}
+
 function zonePriceMatchesGap(zonePrice, gap, itemsSubtotal) {
   if (zonePrice === gap) return true;
-  const flashEligible =
-    Date.now() < FLASH_DELIVERY_DISCOUNT_END.getTime() &&
-    itemsSubtotal >= FLASH_DELIVERY_DISCOUNT_THRESHOLD;
-  return flashEligible && Math.max(0, zonePrice - FLASH_DELIVERY_DISCOUNT_AMOUNT) === gap;
+  return flashDiscountEligible(itemsSubtotal) && applyFlashDiscount(zonePrice, itemsSubtotal) === gap;
 }
 
 // Match a monetary gap to a known named zone fee (base zones only)
@@ -163,4 +174,4 @@ function reconcile(items, fulfillment, statedTotal) {
   };
 }
 
-module.exports = { reconcile };
+module.exports = { reconcile, applyFlashDiscount };

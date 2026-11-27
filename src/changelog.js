@@ -4,6 +4,12 @@
 // version must be a semver string; notes is an array of short bullet strings.
 const CHANGELOG = [
   {
+    version: "1.25.1",
+    notes: [
+      "Fixed the flash delivery discount (₦6,000 off delivery on carts over ₦10,000) not applying when picking a zone from the zone picker, or when modifying a confirmed order's zone — it now always applies automatically wherever a delivery fee is set, and payment verification uses the discounted total",
+    ],
+  },
+  {
     version: "1.25.0",
     notes: [
       "Adjust Amount now allows matching a payment of any amount above the order/top-up total (previously capped at ±₦1,000) — reducing the search amount below the total is still capped at ₦1,000",
